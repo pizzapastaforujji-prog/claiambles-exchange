@@ -5,9 +5,12 @@ import Navbar from "@/components/Navbar";
 import Toast from "@/components/Toast";
 
 export const metadata: Metadata = {
-  title: "ClaimExchange — Capstone Coupon & Voucher Exchange",
+  title: "ClaimExchange – Capstone Coupon & Voucher Exchange",
   description:
-    "Exchange unused discount codes, gift cards, and promotional vouchers before they expire. Powered by Google Gemini Claim AI verification and a fair trust model.",
+    "Exchange unused discount codes, gift cards, and promotional vouchers before they expire. Powered by Google Gemini Claim AI verification.",
+  verification: {
+    google: "R0Rtdb5LUX3KG2onu35lSZpu_lNL2a0XHp_VikIo9pI",
+  },
 };
 
 export default function RootLayout({
