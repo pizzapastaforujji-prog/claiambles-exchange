@@ -22,6 +22,7 @@ export type ClaimableStatus =
 export interface UserProfile {
   id?: string;
   email: string;
+  password?: string;
   credit_score: number;
   points: number;
   preferred_currency: CurrencyCode;

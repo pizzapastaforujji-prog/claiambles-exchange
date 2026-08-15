@@ -63,22 +63,28 @@ export default function Navbar() {
     setAuthBusy(true);
     try {
       if (authMode === "signup") {
-        const success = await signup(cleanEmail, authPassword);
-        if (success) {
+        const res = await signup(cleanEmail, authPassword);
+        if (res.success) {
           setShowAuthModal(false);
           setAuthEmail("");
           setAuthPassword("");
+          setAuthError("");
+        } else {
+          setAuthError(res.message || "Failed to create account.");
         }
       } else {
-        const success = await login(cleanEmail, authPassword);
-        if (success) {
+        const res = await login(cleanEmail, authPassword);
+        if (res.success) {
           setShowAuthModal(false);
           setAuthEmail("");
           setAuthPassword("");
+          setAuthError("");
+        } else {
+          setAuthError(res.message || "Incorrect email or password.");
         }
       }
     } catch (err: any) {
-      setAuthError(err?.message || "Authentication failed.");
+      setAuthError(err?.message || "Authentication error occurred.");
     } finally {
       setAuthBusy(false);
     }
@@ -332,7 +338,7 @@ export default function Navbar() {
               </p>
             </div>
 
-            {authError && (
+            {Boolean(authError && authError.trim().length > 0) && (
               <div
                 style={{
                   padding: "9px 12px",
@@ -342,6 +348,7 @@ export default function Navbar() {
                   fontSize: 12.5,
                   color: "var(--alert)",
                   marginBottom: 14,
+                  lineHeight: 1.4,
                 }}
               >
                 {authError}

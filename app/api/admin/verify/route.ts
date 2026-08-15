@@ -19,31 +19,39 @@ export async function POST(req: NextRequest) {
     const cleanInputEmail = (email || "").trim().toLowerCase();
     const cleanInputPassword = (password || "").trim();
 
+    if (!cleanInputEmail || !cleanInputPassword) {
+      return NextResponse.json(
+        { success: false, message: "Please provide both admin email and password." },
+        { status: 400 }
+      );
+    }
+
     // Check if email matches master admin
     const isMasterEmail =
       cleanInputEmail === allowedAdminEmail ||
       cleanInputEmail === "ujjwalsha2009@gmail.com";
 
-    // Valid if password matches Admin@Claim2026! OR matches admin password or any valid login for master admin
-    if (
-      isMasterEmail &&
-      (cleanInputPassword === allowedAdminPassword ||
-        cleanInputPassword === "Admin@Claim2026!" ||
-        cleanInputPassword.length >= 4)
-    ) {
-      return NextResponse.json({
-        success: true,
-        message: "Admin authentication verified.",
-      });
+    if (!isMasterEmail) {
+      return NextResponse.json(
+        { success: false, message: "Access denied. Only the master admin email is permitted." },
+        { status: 401 }
+      );
     }
 
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Invalid admin credentials. Please check your email and password.",
-      },
-      { status: 401 }
-    );
+    if (
+      cleanInputPassword !== allowedAdminPassword &&
+      cleanInputPassword !== "Admin@Claim2026!"
+    ) {
+      return NextResponse.json(
+        { success: false, message: "Incorrect master password. Please verify and try again." },
+        { status: 401 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Admin authentication verified.",
+    });
   } catch (error: any) {
     return NextResponse.json(
       { success: false, message: "Server authentication error." },

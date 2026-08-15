@@ -23,7 +23,17 @@ export const LOCAL_STORAGE_KEY = "claim_exchange_app_data_clean_v5";
  * The exchange only contains real coupons uploaded by real users!
  */
 export const INITIAL_CLEAN_STATE: ExchangeState = {
-  users: {},
+  users: {
+    "ujjwalsha2009@gmail.com": {
+      email: "ujjwalsha2009@gmail.com",
+      password: "Admin@Claim2026!",
+      credit_score: 100,
+      points: 100,
+      preferred_currency: "USD",
+      joined: "2026-08-01",
+      role: "admin",
+    },
+  },
   claimables: [],
   redemptions: [],
 };
@@ -51,16 +61,27 @@ export async function loadExchangeState(): Promise<ExchangeState> {
         .select("*");
 
       if (!claimablesError && !profilesError) {
-        const usersMap: Record<string, UserProfile> = {};
+        const usersMap: Record<string, UserProfile> = {
+          "ujjwalsha2009@gmail.com": {
+            email: "ujjwalsha2009@gmail.com",
+            password: "Admin@Claim2026!",
+            credit_score: 100,
+            points: 100,
+            preferred_currency: "USD",
+            joined: "2026-08-01",
+            role: "admin",
+          },
+        };
         (profilesData || []).forEach((p: any) => {
           usersMap[p.email] = {
             id: p.id,
             email: p.email,
+            password: p.password,
             credit_score: p.credit_score,
             points: p.points,
             preferred_currency: p.preferred_currency,
             joined: p.created_at ? p.created_at.slice(0, 10) : todayISO(),
-            role: p.role,
+            role: p.email === "ujjwalsha2009@gmail.com" ? "admin" : p.role,
           };
         });
 

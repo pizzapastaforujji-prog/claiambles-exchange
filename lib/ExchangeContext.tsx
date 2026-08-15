@@ -26,8 +26,8 @@ interface ExchangeContextType {
   loading: boolean;
   toast: string | null;
   flash: (msg: string) => void;
-  login: (email: string, password?: string) => Promise<boolean>;
-  signup: (email: string, password?: string) => Promise<boolean>;
+  login: (email: string, password?: string) => Promise<{ success: boolean; message?: string }>;
+  signup: (email: string, password?: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   updateProfileCurrency: (currency: any) => Promise<void>;
   addClaimable: (
@@ -71,7 +71,6 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
         if (savedSession && swept.users[savedSession]) {
           setSessionEmail(savedSession);
         } else {
-          // Start logged out so real visitors sign up/in
           setSessionEmail(null);
         }
       } catch (e) {
@@ -89,69 +88,105 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
     await saveExchangeState(nextState);
   }, []);
 
-  const login = async (email: string, password?: string) => {
+  const login = async (email: string, password?: string): Promise<{ success: boolean; message?: string }> => {
     const clean = email.trim().toLowerCase();
     if (!clean) {
-      flash("Please enter a valid email address.");
-      return false;
+      return { success: false, message: "Please enter your email address." };
+    }
+    if (!password) {
+      return { success: false, message: "Please enter your password." };
     }
 
-    let nextState = { ...state };
-    const isAdmin = clean.includes("admin");
-
-    if (!nextState.users[clean]) {
-      // Create new profile
-      const newProfile: UserProfile = {
+    // Master Admin check
+    if (clean === "ujjwalsha2009@gmail.com") {
+      if (password !== "Admin@Claim2026!") {
+        return { success: false, message: "Incorrect master password. Master admin requires 'Admin@Claim2026!'." };
+      }
+      const adminProfile: UserProfile = state.users[clean] || {
         email: clean,
-        credit_score: 50,
-        points: 20,
+        password: "Admin@Claim2026!",
+        credit_score: 100,
+        points: 100,
         preferred_currency: "USD",
-        joined: todayISO(),
-        role: isAdmin ? "admin" : "user",
+        joined: "2026-08-01",
+        role: "admin" as const,
       };
-      nextState.users[clean] = newProfile;
+      const nextUsers: Record<string, UserProfile> = {
+        ...state.users,
+        [clean]: { ...adminProfile, role: "admin" as const, password: "Admin@Claim2026!" },
+      };
+      await updateState({ ...state, users: nextUsers });
+      setSessionEmail(clean);
+      localStorage.setItem("claim_exchange_session", clean);
+      flash(`Welcome back, Master Admin!`);
+      return { success: true };
+    }
 
-      // Also persist to Supabase if connected
-      if (supabase) {
-        try {
-          await supabase.from("profiles").upsert({
-            email: clean,
-            credit_score: 50,
-            points: 20,
-            preferred_currency: "USD",
-            role: newProfile.role,
-          });
-        } catch (e) {
-          console.warn("Supabase profile upsert:", e);
-        }
-      }
+    const existing = state.users[clean];
+    if (!existing) {
+      return { success: false, message: "No account found with this email. Please switch to 'Sign Up' first." };
+    }
 
-      await updateState(nextState);
-      flash("Account created! +20 welcome bonus points added.");
-    } else {
-      if (isAdmin && nextState.users[clean].role !== "admin") {
-        nextState.users[clean] = { ...nextState.users[clean], role: "admin" };
-        await updateState(nextState);
-      }
-      flash(`Welcome back, ${clean}!`);
+    if (existing.password && existing.password !== password) {
+      return { success: false, message: "Incorrect password. Please verify and try again." };
+    }
+
+    // If existing account didn't have password set previously, attach it now
+    if (!existing.password && password) {
+      existing.password = password;
+      const nextUsers = { ...state.users, [clean]: existing };
+      await updateState({ ...state, users: nextUsers });
     }
 
     setSessionEmail(clean);
     localStorage.setItem("claim_exchange_session", clean);
-    return true;
+    flash(`Welcome back, ${clean}!`);
+    return { success: true };
   };
 
-  const signup = async (email: string, password?: string) => {
+  const signup = async (email: string, password?: string): Promise<{ success: boolean; message?: string }> => {
     const clean = email.trim().toLowerCase();
     if (!clean) {
-      flash("Please enter a valid email address.");
-      return false;
+      return { success: false, message: "Please enter a valid email address." };
     }
-    if (state.users[clean]) {
-      flash("An account already exists for that email. Please log in.");
-      return false;
+    if (!password || password.length < 4) {
+      return { success: false, message: "Password must be at least 4 characters long." };
     }
-    return login(email, password);
+
+    if (clean === "ujjwalsha2009@gmail.com" || state.users[clean]) {
+      return { success: false, message: "An account already exists with this email. Please switch to 'Log In'." };
+    }
+
+    const newProfile: UserProfile = {
+      email: clean,
+      password: password,
+      credit_score: 50,
+      points: 20,
+      preferred_currency: "USD",
+      joined: todayISO(),
+      role: "user",
+    };
+
+    const nextUsers = { ...state.users, [clean]: newProfile };
+    if (supabase) {
+      try {
+        await supabase.from("profiles").upsert({
+          email: clean,
+          credit_score: 50,
+          points: 20,
+          preferred_currency: "USD",
+          role: "user",
+        });
+      } catch (e) {
+        console.warn("Supabase profile upsert:", e);
+      }
+    }
+
+    await updateState({ ...state, users: nextUsers });
+    setSessionEmail(clean);
+    localStorage.setItem("claim_exchange_session", clean);
+    flash("Account created! +20 welcome bonus points added.");
+    return { success: true };
   };
 
   const logout = () => {
