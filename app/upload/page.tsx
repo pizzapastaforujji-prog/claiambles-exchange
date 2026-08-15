@@ -141,6 +141,35 @@ export default function UploadPage() {
     }
   };
 
+  if (!currentUser) {
+    return (
+      <div style={{ maxWidth: 500, margin: "60px auto 0", textAlign: "center" }}>
+        <div className="ticket" style={{ padding: "36px 24px" }}>
+          <div className="label" style={{ color: "var(--stamp)", marginBottom: 8 }}>
+            Authentication Required
+          </div>
+          <h2 style={{ fontFamily: "var(--display)", fontSize: 32, marginBottom: 12 }}>
+            SIGN IN TO UPLOAD CLAIMABLES
+          </h2>
+          <p style={{ color: "var(--ink-muted)", fontSize: 14, lineHeight: 1.5, marginBottom: 24 }}>
+            You need an active exchange account to submit coupons, earn upfront points, and build your credit score.
+          </p>
+          <button
+            type="button"
+            className="btn stamp"
+            onClick={() => {
+              const navBtn = document.querySelector("header button.btn.stamp") as HTMLButtonElement;
+              if (navBtn) navBtn.click();
+              else flash("Click 'Log in / Sign up' in the top right corner to get started.");
+            }}
+          >
+            Log In / Create Account
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 620, margin: "40px auto 0" }}>
       <div style={{ marginBottom: 24, textAlign: "center" }}>

@@ -4,13 +4,30 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useExchange } from "@/lib/ExchangeContext";
-import { Coins, ShieldCheck, Ticket, User, LogIn, LogOut, Sparkles, AlertCircle } from "lucide-react";
+import { isValidEmail } from "@/lib/claimRules";
+import {
+  Coins,
+  ShieldCheck,
+  Ticket,
+  User,
+  LogIn,
+  LogOut,
+  Sparkles,
+  AlertCircle,
+  Lock,
+  Mail,
+  CheckCircle2,
+} from "lucide-react";
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { sessionEmail, currentUser, logout, login } = useExchange();
+  const { sessionEmail, currentUser, logout, login, signup, flash } = useExchange();
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   const navItems = [
     { href: "/", label: "Home" },
@@ -20,12 +37,48 @@ export default function Navbar() {
     { href: "/profile", label: "Profile" },
   ];
 
-  const handleQuickLogin = async (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!authEmail.trim()) return;
-    await login(authEmail);
-    setShowAuthModal(false);
-    setAuthEmail("");
+    setAuthError("");
+    const cleanEmail = authEmail.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setAuthError("Please enter your email address.");
+      return;
+    }
+
+    if (!isValidEmail(cleanEmail)) {
+      setAuthError("Please enter a valid email address.");
+      return;
+    }
+
+    if (authPassword.length < 4) {
+      setAuthError("Password must be at least 4 characters.");
+      return;
+    }
+
+    setAuthBusy(true);
+    try {
+      if (authMode === "signup") {
+        const success = await signup(cleanEmail, authPassword);
+        if (success) {
+          setShowAuthModal(false);
+          setAuthEmail("");
+          setAuthPassword("");
+        }
+      } else {
+        const success = await login(cleanEmail, authPassword);
+        if (success) {
+          setShowAuthModal(false);
+          setAuthEmail("");
+          setAuthPassword("");
+        }
+      }
+    } catch (err: any) {
+      setAuthError(err?.message || "Authentication failed.");
+    } finally {
+      setAuthBusy(false);
+    }
   };
 
   return (
@@ -151,53 +204,139 @@ export default function Navbar() {
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                className="btn stamp small"
-                onClick={() => setShowAuthModal(true)}
-              >
-                <LogIn style={{ width: 14, height: 14 }} />
-                Log in / Sign up
-              </button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={() => {
+                    setAuthMode("login");
+                    setAuthError("");
+                    setShowAuthModal(true);
+                  }}
+                >
+                  <LogIn style={{ width: 14, height: 14 }} />
+                  Log in
+                </button>
+                <button
+                  type="button"
+                  className="btn stamp small"
+                  onClick={() => {
+                    setAuthMode("signup");
+                    setAuthError("");
+                    setShowAuthModal(true);
+                  }}
+                >
+                  Sign up
+                </button>
+              </div>
             )}
           </div>
         </div>
       </header>
 
-      {/* Auth Modal */}
+      {/* Real Auth Modal */}
       {showAuthModal && (
         <div className="modal-backdrop" onClick={() => setShowAuthModal(false)}>
           <div
             className="ticket ticket-no-notches"
-            style={{ width: "100%", maxWidth: 380, padding: 28 }}
+            style={{ width: "100%", maxWidth: 420, padding: 28 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-              <Sparkles style={{ width: 22, height: 22, color: "var(--stamp)" }} />
-              <h3 style={{ fontFamily: "var(--display)", fontSize: 26 }}>
-                Welcome to ClaimExchange
-              </h3>
+            {/* Modal Header Tabs */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+              <button
+                type="button"
+                className={`btn ${authMode === "login" ? "stamp" : "secondary"}`}
+                style={{ flex: 1, padding: "8px 12px" }}
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthError("");
+                }}
+              >
+                Log In
+              </button>
+              <button
+                type="button"
+                className={`btn ${authMode === "signup" ? "stamp" : "secondary"}`}
+                style={{ flex: 1, padding: "8px 12px" }}
+                onClick={() => {
+                  setAuthMode("signup");
+                  setAuthError("");
+                }}
+              >
+                Sign Up
+              </button>
             </div>
-            <p style={{ fontSize: 13, color: "var(--ink-muted)", marginBottom: 20 }}>
-              Sign in with your email to start uploading vouchers, earning points, and redeeming exclusive discounts.
-            </p>
 
-            <form onSubmit={handleQuickLogin}>
-              <label className="label">Your Email Address</label>
-              <input
-                type="email"
-                className="input"
-                placeholder="you@example.com"
-                required
-                value={authEmail}
-                onChange={(e) => setAuthEmail(e.target.value)}
-                style={{ marginBottom: 16 }}
-                autoFocus
-              />
+            <div style={{ marginBottom: 16 }}>
+              <h3 style={{ fontFamily: "var(--display)", fontSize: 26, marginBottom: 4 }}>
+                {authMode === "login" ? "Log in to your account" : "Create a new account"}
+              </h3>
+              <p style={{ fontSize: 13, color: "var(--ink-muted)" }}>
+                {authMode === "login"
+                  ? "Access your uploaded vouchers, points, and active redemptions."
+                  : "Join the exchange: get +20 welcome bonus points and a starting credit score of 50!"}
+              </p>
+            </div>
+
+            {authError && (
+              <div
+                style={{
+                  padding: "10px 12px",
+                  background: "var(--alert-light)",
+                  border: "1px solid rgba(178,70,50,0.2)",
+                  borderRadius: 4,
+                  fontSize: 13,
+                  color: "var(--alert)",
+                  marginBottom: 14,
+                }}
+              >
+                {authError}
+              </div>
+            )}
+
+            <form onSubmit={handleAuthSubmit}>
+              <div style={{ marginBottom: 14 }}>
+                <label className="label">Email Address</label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="email"
+                    className="input"
+                    placeholder="you@example.com"
+                    required
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <label className="label">Password</label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder="••••••••"
+                    required
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                  />
+                </div>
+              </div>
 
               <div style={{ display: "flex", gap: 10 }}>
-                <button type="submit" className="btn stamp" style={{ flex: 1 }}>
-                  Continue
+                <button
+                  type="submit"
+                  className="btn stamp"
+                  style={{ flex: 1, padding: "12px 14px" }}
+                  disabled={authBusy}
+                >
+                  {authBusy
+                    ? "Working..."
+                    : authMode === "login"
+                    ? "Log In"
+                    : "Create Account"}
                 </button>
                 <button
                   type="button"
@@ -211,7 +350,7 @@ export default function Navbar() {
 
             <div
               style={{
-                marginTop: 20,
+                marginTop: 18,
                 padding: "10px 12px",
                 background: "var(--paper)",
                 borderRadius: 4,
@@ -220,11 +359,12 @@ export default function Navbar() {
                 color: "var(--ink-subtle)",
                 display: "flex",
                 gap: 8,
+                alignItems: "center",
               }}
             >
-              <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, color: "var(--stamp)" }} />
+              <Sparkles style={{ width: 16, height: 16, flexShrink: 0, color: "var(--stamp)" }} />
               <span>
-                New members automatically receive <strong>20 bonus points</strong> and an initial credit score of <strong>50</strong>!
+                Each account maintains its own private points wallet, uploads, and 1-per-day redemption limit.
               </span>
             </div>
           </div>

@@ -25,8 +25,8 @@ interface ExchangeContextType {
   loading: boolean;
   toast: string | null;
   flash: (msg: string) => void;
-  login: (email: string) => Promise<boolean>;
-  signup: (email: string) => Promise<boolean>;
+  login: (email: string, password?: string) => Promise<boolean>;
+  signup: (email: string, password?: string) => Promise<boolean>;
   logout: () => void;
   updateProfileCurrency: (currency: any) => Promise<void>;
   addClaimable: (
@@ -64,13 +64,13 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
         setState(swept);
         await saveExchangeState(swept);
 
-        // Auto restore last user session if available
+        // Restore user session only if the user explicitly logged in previously
         const savedSession = localStorage.getItem("claim_exchange_session");
         if (savedSession && swept.users[savedSession]) {
           setSessionEmail(savedSession);
         } else {
-          // Default to demo user for frictionless instant preview
-          setSessionEmail("alex@exchange.com");
+          // Start logged out so visitors sign in with their own actual account
+          setSessionEmail(null);
         }
       } catch (e) {
         console.error("Init exchange state error:", e);
@@ -87,8 +87,13 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
     await saveExchangeState(nextState);
   }, []);
 
-  const login = async (email: string) => {
+  const login = async (email: string, password?: string) => {
     const clean = email.trim().toLowerCase();
+    if (!clean) {
+      flash("Please enter a valid email address.");
+      return false;
+    }
+
     let nextState = { ...state };
     if (!nextState.users[clean]) {
       // Create user if doesn't exist
@@ -103,15 +108,24 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       await updateState(nextState);
       flash("Account created! +20 welcome bonus points added.");
     } else {
-      flash("Welcome back!");
+      flash(`Welcome back, ${clean}!`);
     }
     setSessionEmail(clean);
     localStorage.setItem("claim_exchange_session", clean);
     return true;
   };
 
-  const signup = async (email: string) => {
-    return login(email);
+  const signup = async (email: string, password?: string) => {
+    const clean = email.trim().toLowerCase();
+    if (!clean) {
+      flash("Please enter a valid email address.");
+      return false;
+    }
+    if (state.users[clean]) {
+      flash("An account already exists for that email. Please log in.");
+      return false;
+    }
+    return login(email, password);
   };
 
   const logout = () => {
