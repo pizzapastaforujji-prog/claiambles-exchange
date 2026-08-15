@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useExchange } from "@/lib/ExchangeContext";
 import { formatMoney } from "@/lib/claimRules";
 import {
   ShieldAlert,
+  ShieldCheck,
   CheckCircle,
   XCircle,
   Trash2,
@@ -13,6 +14,8 @@ import {
   Eye,
   ArrowRight,
   Sparkles,
+  Lock,
+  LogOut,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -23,70 +26,138 @@ export default function AdminPage() {
     adminApproveClaimable,
     adminRejectClaimable,
     adminDeleteClaimable,
-    login,
     flash,
   } = useExchange();
 
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [adminEmailInput, setAdminEmailInput] = useState("");
   const [adminPassInput, setAdminPassInput] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  const isAdmin = currentUser?.role === "admin" || Boolean(sessionEmail && sessionEmail.toLowerCase().includes("admin"));
+  useEffect(() => {
+    const savedAdminAuth = sessionStorage.getItem("claim_admin_authenticated");
+    if (savedAdminAuth === "true") {
+      setIsAdminAuthenticated(true);
+    }
+  }, []);
 
-  if (!currentUser || !isAdmin) {
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthBusy(true);
+
+    try {
+      const res = await fetch("/api/admin/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: adminEmailInput.trim(),
+          password: adminPassInput.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setIsAdminAuthenticated(true);
+        sessionStorage.setItem("claim_admin_authenticated", "true");
+        flash("Master Admin access granted.");
+      } else {
+        setAuthError(data.message || "Invalid admin credentials.");
+      }
+    } catch (err: any) {
+      setAuthError("Failed to reach authentication server.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminAuthenticated(false);
+    sessionStorage.removeItem("claim_admin_authenticated");
+    flash("Admin logged out.");
+  };
+
+  if (!isAdminAuthenticated) {
     return (
-      <div style={{ maxWidth: 440, margin: "60px auto 0", textAlign: "center" }}>
+      <div style={{ maxWidth: 420, margin: "60px auto 0", textAlign: "center" }}>
         <div className="card" style={{ padding: "32px 24px" }}>
           <div
             style={{
-              width: 44,
-              height: 44,
+              width: 48,
+              height: 48,
               borderRadius: "var(--radius-full)",
               background: "var(--alert-light)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               color: "var(--alert)",
-              margin: "0 auto 12px",
+              margin: "0 auto 14px",
             }}
           >
-            <ShieldAlert style={{ width: 22, height: 22 }} />
+            <Lock style={{ width: 22, height: 22 }} />
           </div>
+
           <h3 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
-            Admin Console Access
+            Restricted Admin Portal
           </h3>
           <p style={{ color: "var(--ink-muted)", fontSize: 13, lineHeight: 1.45, marginBottom: 20 }}>
-            Sign in with an administrator email (e.g. <code>admin@claimexchange.com</code> or any email with &apos;admin&apos;) to manage the database and moderate vouchers.
+            Enter your Master Admin credentials to moderate claimables and manage database records.
           </p>
 
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!adminEmailInput.trim()) return;
-              await login(adminEmailInput, adminPassInput);
-            }}
-          >
-            <input
-              type="email"
-              className="input"
-              placeholder="admin@claimexchange.com"
-              required
-              value={adminEmailInput}
-              onChange={(e) => setAdminEmailInput(e.target.value)}
-              style={{ marginBottom: 10 }}
-            />
-            <input
-              type="password"
-              className="input"
-              placeholder="Password"
-              required
-              value={adminPassInput}
-              onChange={(e) => setAdminPassInput(e.target.value)}
-              style={{ marginBottom: 14 }}
-            />
-            <button type="submit" className="btn alert" style={{ width: "100%" }}>
-              Sign in as Admin
-              <ArrowRight style={{ width: 14, height: 14 }} />
+          {authError && (
+            <div
+              style={{
+                padding: "8px 12px",
+                background: "var(--alert-light)",
+                border: "1px solid rgba(194,65,45,0.2)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: 12.5,
+                color: "var(--alert)",
+                marginBottom: 14,
+                textAlign: "left",
+              }}
+            >
+              {authError}
+            </div>
+          )}
+
+          <form onSubmit={handleAdminLogin}>
+            <div style={{ marginBottom: 12, textAlign: "left" }}>
+              <label className="label">Master Admin Email</label>
+              <input
+                type="email"
+                className="input"
+                placeholder="your-admin@email.com"
+                required
+                value={adminEmailInput}
+                onChange={(e) => setAdminEmailInput(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div style={{ marginBottom: 18, textAlign: "left" }}>
+              <label className="label">Master Admin Password</label>
+              <input
+                type="password"
+                className="input"
+                placeholder="••••••••"
+                required
+                value={adminPassInput}
+                onChange={(e) => setAdminPassInput(e.target.value)}
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn alert"
+              style={{ width: "100%", padding: "10px 14px" }}
+              disabled={authBusy}
+            >
+              {authBusy ? "Verifying..." : "Unlock Admin Portal"}
+              {!authBusy && <ArrowRight style={{ width: 14, height: 14 }} />}
             </button>
           </form>
         </div>
@@ -113,8 +184,20 @@ export default function AdminPage() {
         }}
       >
         <div>
-          <div className="pill alert" style={{ marginBottom: 6, fontSize: 11, padding: "2px 8px" }}>
-            Admin Moderation Portal
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span className="pill alert" style={{ fontSize: 11, padding: "2px 8px" }}>
+              <ShieldCheck style={{ width: 12, height: 12 }} />
+              Authenticated Master Admin
+            </span>
+            <button
+              type="button"
+              className="btn secondary small"
+              onClick={handleAdminLogout}
+              style={{ padding: "2px 8px", fontSize: 11.5 }}
+            >
+              <LogOut style={{ width: 11, height: 11 }} />
+              Lock Admin
+            </button>
           </div>
           <h2
             style={{
