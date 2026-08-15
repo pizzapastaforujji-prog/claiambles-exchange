@@ -206,30 +206,39 @@ export default function BrowsePage() {
         <div
           className="ticket"
           style={{
-            padding: "48px 24px",
+            padding: "54px 24px",
             textAlign: "center",
             background: "#ffffff",
           }}
         >
-          <AlertCircle style={{ width: 32, height: 32, color: "var(--ink-subtle)", margin: "0 auto 12px" }} />
-          <h4 style={{ fontFamily: "var(--display)", fontSize: 24, marginBottom: 6 }}>
-            NO MATCHING CLAIMABLES
+          <Sparkles style={{ width: 36, height: 36, color: "var(--stamp)", margin: "0 auto 12px" }} />
+          <h4 style={{ fontFamily: "var(--display)", fontSize: 28, marginBottom: 8 }}>
+            {state.claimables.length === 0 ? "THE EXCHANGE IS FRESH & READY" : "NO MATCHING CLAIMABLES"}
           </h4>
-          <p style={{ color: "var(--ink-muted)", fontSize: 14, maxWidth: 400, margin: "0 auto 18px" }}>
-            No vouchers match your selected filters. Try widening your search or upload an unused coupon to earn points.
+          <p style={{ color: "var(--ink-muted)", fontSize: 14, maxWidth: 440, margin: "0 auto 20px", lineHeight: 1.5 }}>
+            {state.claimables.length === 0
+              ? "There are no vouchers uploaded yet. Be the first contributor to share an unused coupon, earn upfront points, and start the exchange!"
+              : "No vouchers match your selected filters. Try widening your search or upload a new coupon to earn points."}
           </p>
-          <button
-            type="button"
-            className="btn secondary small"
-            onClick={() => {
-              setSearch("");
-              setCategory("All");
-              setCurrencyFilter("All");
-              setMethodFilter("All");
-            }}
-          >
-            Reset all filters
-          </button>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            <Link href="/upload" className="btn stamp">
+              + Upload Your First Claimable
+            </Link>
+            {state.claimables.length > 0 && (
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  setSearch("");
+                  setCategory("All");
+                  setCurrencyFilter("All");
+                  setMethodFilter("All");
+                }}
+              >
+                Reset filters
+              </button>
+            )}
+          </div>
         </div>
       )}
 

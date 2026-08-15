@@ -5,7 +5,8 @@ import { ExchangeState, Claimable, UserProfile, ClaimAIVerdict } from "./types";
 import {
   loadExchangeState,
   saveExchangeState,
-  INITIAL_DEMO_STATE,
+  INITIAL_CLEAN_STATE,
+  supabase,
 } from "./supabaseClient";
 import {
   todayISO,
@@ -43,7 +44,7 @@ interface ExchangeContextType {
 const ExchangeContext = createContext<ExchangeContextType | undefined>(undefined);
 
 export function ExchangeProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<ExchangeState>(INITIAL_DEMO_STATE);
+  const [state, setState] = useState<ExchangeState>(INITIAL_CLEAN_STATE);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
@@ -69,7 +70,7 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
         if (savedSession && swept.users[savedSession]) {
           setSessionEmail(savedSession);
         } else {
-          // Start logged out so visitors sign in with their own actual account
+          // Start logged out so real visitors sign up/in
           setSessionEmail(null);
         }
       } catch (e) {
@@ -96,8 +97,8 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
 
     let nextState = { ...state };
     if (!nextState.users[clean]) {
-      // Create user if doesn't exist
-      nextState.users[clean] = {
+      // Create new profile
+      const newProfile: UserProfile = {
         email: clean,
         credit_score: 50,
         points: 20,
@@ -105,11 +106,29 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
         joined: todayISO(),
         role: clean.includes("admin") ? "admin" : "user",
       };
+      nextState.users[clean] = newProfile;
+
+      // Also persist to Supabase if connected
+      if (supabase) {
+        try {
+          await supabase.from("profiles").upsert({
+            email: clean,
+            credit_score: 50,
+            points: 20,
+            preferred_currency: "USD",
+            role: newProfile.role,
+          });
+        } catch (e) {
+          console.warn("Supabase profile upsert:", e);
+        }
+      }
+
       await updateState(nextState);
       flash("Account created! +20 welcome bonus points added.");
     } else {
       flash(`Welcome back, ${clean}!`);
     }
+
     setSessionEmail(clean);
     localStorage.setItem("claim_exchange_session", clean);
     return true;
@@ -141,6 +160,16 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       ...state.users,
       [sessionEmail]: { ...user, preferred_currency: currency },
     };
+
+    if (supabase) {
+      try {
+        await supabase
+          .from("profiles")
+          .update({ preferred_currency: currency })
+          .eq("email", sessionEmail);
+      } catch (e) {}
+    }
+
     await updateState({ ...state, users: nextUsers });
     flash(`Preferred currency set to ${currency}.`);
   };
@@ -196,6 +225,42 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       ai_reason: verdict.reason,
       ai_detected_code: verdict.detectedCode || "",
     };
+
+    // Insert into live Supabase if connected
+    if (supabase) {
+      try {
+        await supabase.from("claimables").insert({
+          type: newClaimable.type,
+          brand: newClaimable.brand,
+          offer_title: newClaimable.offerTitle,
+          code: newClaimable.code,
+          image_data_base64: newClaimable.imageDataUrl,
+          image_media_type: newClaimable.imageMediaType,
+          image_note: newClaimable.imageNote,
+          category: newClaimable.category,
+          redemption_method: newClaimable.redemptionMethod,
+          currency: newClaimable.currency,
+          face_value: newClaimable.value,
+          expiry_date: newClaimable.expiry,
+          status: "valid",
+          points_total: total,
+          points_upfront: upfront,
+          points_final: final,
+          ai_reason: newClaimable.ai_reason,
+          ai_detected_code: newClaimable.ai_detected_code,
+        });
+
+        await supabase
+          .from("profiles")
+          .update({
+            points: user.points + upfront,
+            credit_score: Math.min(100, user.credit_score + 5),
+          })
+          .eq("email", sessionEmail);
+      } catch (e) {
+        console.warn("Supabase insert claimable:", e);
+      }
+    }
 
     const nextUsers = {
       ...state.users,
@@ -286,6 +351,24 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       },
     ];
 
+    if (supabase) {
+      try {
+        await supabase
+          .from("claimables")
+          .update({
+            status: "pending_confirmation",
+            redeemed_at: today,
+            confirm_by: addDays(today, CONFIRM_WINDOW_DAYS),
+          })
+          .eq("id", claimableId);
+
+        await supabase
+          .from("profiles")
+          .update({ points: user.points - cost })
+          .eq("email", sessionEmail);
+      } catch (e) {}
+    }
+
     await updateState({
       ...state,
       users: nextUsers,
@@ -299,12 +382,28 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
 
   const confirmRedemption = async (claimableId: string) => {
     const nextState = confirmClaimable(state, claimableId);
+    if (supabase) {
+      try {
+        await supabase
+          .from("claimables")
+          .update({ status: "confirmed" })
+          .eq("id", claimableId);
+      } catch (e) {}
+    }
     await updateState(nextState);
     flash("Confirmed! Remaining points released to uploader and credit scores boosted.");
   };
 
   const disputeRedemption = async (claimableId: string, reason: string) => {
     const nextState = disputeClaimable(state, claimableId, reason);
+    if (supabase) {
+      try {
+        await supabase
+          .from("claimables")
+          .update({ status: "disputed", dispute_reason: reason })
+          .eq("id", claimableId);
+      } catch (e) {}
+    }
     await updateState(nextState);
     flash("Reported. Full points refunded to your balance; uploader penalized.");
   };

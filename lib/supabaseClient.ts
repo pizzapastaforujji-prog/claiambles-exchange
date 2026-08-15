@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { ExchangeState, Claimable, UserProfile } from "./types";
-import { todayISO, addDays } from "./claimRules";
+import { ExchangeState, Claimable, UserProfile, RedemptionRecord } from "./types";
+import { todayISO } from "./claimRules";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -16,155 +16,134 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
-export const LOCAL_STORAGE_KEY = "claim_exchange_app_data_v4";
+export const LOCAL_STORAGE_KEY = "claim_exchange_app_data_clean_v5";
 
 /**
- * Initial demo dataset to make the exchange feel alive on first load
+ * Clean production state: 0 fake coupons, 0 fake users.
+ * The exchange only contains real coupons uploaded by real users!
  */
-export const INITIAL_DEMO_STATE: ExchangeState = {
-  users: {
-    "alex@exchange.com": {
-      email: "alex@exchange.com",
-      credit_score: 85,
-      points: 45,
-      preferred_currency: "USD",
-      joined: "2026-07-01",
-      role: "user",
-    },
-    "sarah@tech.org": {
-      email: "sarah@tech.org",
-      credit_score: 92,
-      points: 70,
-      preferred_currency: "USD",
-      joined: "2026-06-15",
-      role: "user",
-    },
-    "admin@claimexchange.com": {
-      email: "admin@claimexchange.com",
-      credit_score: 100,
-      points: 500,
-      preferred_currency: "USD",
-      joined: "2026-01-01",
-      role: "admin",
-    },
-  },
-  claimables: [
-    {
-      id: "cl-starbucks-01",
-      uploader: "alex@exchange.com",
-      type: "code",
-      brand: "Starbucks",
-      offerTitle: "$10 off handcrafted beverages",
-      code: "STAR-COFFEE-B9X2",
-      category: "Food & Drink",
-      redemptionMethod: "Both",
-      currency: "USD",
-      value: 10,
-      expiry: addDays(todayISO(), 5),
-      status: "valid",
-      points_total: 15,
-      points_upfront: 4,
-      points_final: 11,
-      uploaded_at: todayISO(),
-      ai_reason: "Verified — Starbucks $10 beverage coupon valid and active.",
-    },
-    {
-      id: "cl-nike-02",
-      uploader: "sarah@tech.org",
-      type: "code",
-      brand: "Nike",
-      offerTitle: "20% off apparel & running footwear",
-      code: "NIKE-RUN-20OFF",
-      category: "Shopping",
-      redemptionMethod: "Online",
-      currency: "USD",
-      value: 35,
-      expiry: addDays(todayISO(), 2),
-      status: "valid",
-      points_total: 30,
-      points_upfront: 8,
-      points_final: 22,
-      uploaded_at: todayISO(),
-      ai_reason: "Verified — Nike promo code verified for active catalog items.",
-    },
-    {
-      id: "cl-ubereats-03",
-      uploader: "alex@exchange.com",
-      type: "code",
-      brand: "Uber Eats",
-      offerTitle: "$15 off next 2 lunch orders",
-      code: "EATS-LUNCH-55XY",
-      category: "Food & Drink",
-      redemptionMethod: "Online",
-      currency: "USD",
-      value: 15,
-      expiry: addDays(todayISO(), 8),
-      status: "valid",
-      points_total: 15,
-      points_upfront: 4,
-      points_final: 11,
-      uploaded_at: todayISO(),
-      ai_reason: "Verified — Uber Eats promo code matches food delivery patterns.",
-    },
-    {
-      id: "cl-spotify-04",
-      uploader: "sarah@tech.org",
-      type: "code",
-      brand: "Spotify",
-      offerTitle: "1-Month Premium Subscription pass",
-      code: "SPOT-PASS-7890",
-      category: "Entertainment",
-      redemptionMethod: "Online",
-      currency: "USD",
-      value: 11.99,
-      expiry: addDays(todayISO(), 14),
-      status: "valid",
-      points_total: 15,
-      points_upfront: 4,
-      points_final: 11,
-      uploaded_at: todayISO(),
-      ai_reason: "Verified — Spotify 1-month premium code passes authenticity check.",
-    },
-  ],
+export const INITIAL_CLEAN_STATE: ExchangeState = {
+  users: {},
+  claimables: [],
   redemptions: [],
 };
 
 /**
- * Loads exchange state from Supabase if configured, otherwise from localStorage with initial demo fallback
+ * Loads exchange state from live Supabase Database if connected, or local storage
  */
 export async function loadExchangeState(): Promise<ExchangeState> {
-  if (typeof window === "undefined") {
-    return INITIAL_DEMO_STATE;
-  }
+  if (supabase) {
+    try {
+      // 1. Fetch live claimables from Supabase
+      const { data: claimablesData, error: claimablesError } = await supabase
+        .from("claimables")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.claimables && parsed.users) {
-        return parsed;
+      // 2. Fetch profiles from Supabase
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("*");
+
+      // 3. Fetch redemptions from Supabase
+      const { data: redemptionsData, error: redemptionsError } = await supabase
+        .from("redemptions")
+        .select("*");
+
+      if (!claimablesError && !profilesError) {
+        const usersMap: Record<string, UserProfile> = {};
+        (profilesData || []).forEach((p: any) => {
+          usersMap[p.email] = {
+            id: p.id,
+            email: p.email,
+            credit_score: p.credit_score,
+            points: p.points,
+            preferred_currency: p.preferred_currency,
+            joined: p.created_at ? p.created_at.slice(0, 10) : todayISO(),
+            role: p.role,
+          };
+        });
+
+        const mappedClaimables: Claimable[] = (claimablesData || []).map((c: any) => ({
+          id: c.id,
+          uploader: c.uploader_id || c.uploader || "Anonymous",
+          uploader_id: c.uploader_id,
+          type: c.type,
+          brand: c.brand,
+          offerTitle: c.offer_title,
+          code: c.code,
+          imageDataUrl: c.image_data_base64,
+          imageMediaType: c.image_media_type,
+          imageUrl: c.image_url,
+          imageNote: c.image_note,
+          category: c.category,
+          redemptionMethod: c.redemption_method,
+          currency: c.currency,
+          value: Number(c.face_value),
+          expiry: c.expiry_date,
+          status: c.status,
+          points_total: c.points_total,
+          points_upfront: c.points_upfront,
+          points_final: c.points_final,
+          uploaded_at: c.created_at ? c.created_at.slice(0, 10) : todayISO(),
+          redeemed_by: c.redeemed_by,
+          redeemed_at: c.redeemed_at,
+          confirm_by: c.confirm_by,
+          dispute_reason: c.dispute_reason,
+          ai_reason: c.ai_reason,
+          ai_detected_code: c.ai_detected_code,
+        }));
+
+        const mappedRedemptions: RedemptionRecord[] = (redemptionsData || []).map((r: any) => ({
+          id: r.id,
+          claimable_id: r.claimable_id,
+          redeemed_by: r.redeemed_by,
+          redeemed_at: r.redeemed_at,
+          points_spent: r.points_spent,
+        }));
+
+        return {
+          users: usersMap,
+          claimables: mappedClaimables,
+          redemptions: mappedRedemptions,
+        };
       }
+    } catch (err) {
+      console.warn("Supabase fetch fallback to local storage:", err);
     }
-  } catch (err) {
-    console.warn("Could not read local storage state:", err);
   }
 
-  // Save initial demo state to local storage
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(INITIAL_DEMO_STATE));
-  } catch {}
+  // Fallback to local storage (clean state)
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          return {
+            users: parsed.users || {},
+            claimables: parsed.claimables || [],
+            redemptions: parsed.redemptions || [],
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("Could not read local storage state:", err);
+    }
+  }
 
-  return INITIAL_DEMO_STATE;
+  return INITIAL_CLEAN_STATE;
 }
 
 /**
- * Persists exchange state to storage
+ * Persists exchange state to Supabase and LocalStorage
  */
 export async function saveExchangeState(state: ExchangeState): Promise<void> {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-  } catch (err) {
-    console.error("Failed to save state to localStorage:", err);
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+    } catch (err) {
+      console.error("Failed to save state to localStorage:", err);
+    }
   }
 }
