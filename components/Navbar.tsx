@@ -17,6 +17,8 @@ import {
   Lock,
   Mail,
   ArrowRight,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 export default function Navbar() {
@@ -26,6 +28,7 @@ export default function Navbar() {
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
 
@@ -80,6 +83,14 @@ export default function Navbar() {
       setAuthBusy(false);
     }
   };
+
+  const isAdmin =
+    currentUser?.role === "admin" ||
+    Boolean(
+      sessionEmail &&
+        (sessionEmail.toLowerCase().includes("admin") ||
+          sessionEmail.toLowerCase() === "ujjwalsha2009@gmail.com")
+    );
 
   return (
     <>
@@ -151,7 +162,7 @@ export default function Navbar() {
                 </Link>
               );
             })}
-            {(currentUser?.role === "admin" || (sessionEmail && sessionEmail.toLowerCase().includes("admin"))) && (
+            {isAdmin && (
               <Link
                 href="/admin"
                 className={`navlink ${pathname === "/admin" ? "active" : ""}`}
@@ -353,14 +364,41 @@ export default function Navbar() {
 
               <div style={{ marginBottom: 18 }}>
                 <label className="label">Password</label>
-                <input
-                  type="password"
-                  className="input"
-                  placeholder="••••••••"
-                  required
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                />
+                <div style={{ position: "relative" }}>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    className="input"
+                    placeholder="••••••••"
+                    required
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    style={{ paddingRight: 38 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: "absolute",
+                      right: 10,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--ink-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      padding: 4,
+                    }}
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff style={{ width: 16, height: 16 }} />
+                    ) : (
+                      <Eye style={{ width: 16, height: 16 }} />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div style={{ display: "flex", gap: 8 }}>

@@ -12,6 +12,7 @@ import {
   Trash2,
   Filter,
   Eye,
+  EyeOff,
   ArrowRight,
   Sparkles,
   Lock,
@@ -32,6 +33,7 @@ export default function AdminPage() {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [adminEmailInput, setAdminEmailInput] = useState("");
   const [adminPassInput, setAdminPassInput] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -140,14 +142,41 @@ export default function AdminPage() {
 
             <div style={{ marginBottom: 18, textAlign: "left" }}>
               <label className="label">Master Admin Password</label>
-              <input
-                type="password"
-                className="input"
-                placeholder="••••••••"
-                required
-                value={adminPassInput}
-                onChange={(e) => setAdminPassInput(e.target.value)}
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="input"
+                  placeholder="••••••••"
+                  required
+                  value={adminPassInput}
+                  onChange={(e) => setAdminPassInput(e.target.value)}
+                  style={{ paddingRight: 38 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--ink-muted)",
+                    display: "flex",
+                    alignItems: "center",
+                    padding: 4,
+                  }}
+                  title={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? (
+                    <EyeOff style={{ width: 16, height: 16 }} />
+                  ) : (
+                    <Eye style={{ width: 16, height: 16 }} />
+                  )}
+                </button>
+              </div>
             </div>
 
             <button
