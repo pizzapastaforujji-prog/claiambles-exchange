@@ -2,58 +2,61 @@
 
 import React from "react";
 import { useExchange } from "@/lib/ExchangeContext";
-import { CheckCircle2, AlertTriangle } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Info, X } from "lucide-react";
 
 export default function Toast() {
-  const { toast } = useExchange();
+  const { toast, flash } = useExchange();
 
-  if (!toast) return null;
+  if (!toast || !toast.trim()) return null;
 
-  const isAlert = toast.toLowerCase().includes("reject") ||
-                  toast.toLowerCase().includes("error") ||
-                  toast.toLowerCase().includes("failed") ||
-                  toast.toLowerCase().includes("flagged") ||
-                  toast.toLowerCase().includes("dispute") ||
-                  toast.toLowerCase().includes("invalid");
+  const isAlert =
+    toast.toLowerCase().includes("reject") ||
+    toast.toLowerCase().includes("error") ||
+    toast.toLowerCase().includes("failed") ||
+    toast.toLowerCase().includes("flagged") ||
+    toast.toLowerCase().includes("dispute") ||
+    toast.toLowerCase().includes("invalid") ||
+    toast.toLowerCase().includes("incorrect");
 
   return (
     <div
       style={{
         position: "fixed",
-        bottom: 24,
+        bottom: 28,
         left: "50%",
         transform: "translateX(-50%)",
-        background: "var(--ink)",
-        color: "var(--paper)",
-        padding: "12px 20px",
-        borderRadius: 4,
-        fontSize: 14,
-        boxShadow: "0 8px 24px rgba(34,31,27,0.25)",
-        zIndex: 150,
-        maxWidth: "min(92vw, 480px)",
+        background: "#181613",
+        color: "#FFFFFF",
+        padding: "10px 18px",
+        borderRadius: "var(--radius-full, 9999px)",
+        fontSize: 13.5,
+        fontWeight: 500,
+        boxShadow: "0 10px 28px -4px rgba(24, 22, 19, 0.35), 0 2px 8px rgba(24, 22, 19, 0.15)",
+        zIndex: 200,
+        maxWidth: "min(92vw, 460px)",
         display: "flex",
         alignItems: "center",
         gap: 10,
-        border: `1px solid ${isAlert ? "var(--alert)" : "var(--stamp)"}`,
-        animation: "slideUp 0.2s ease-out",
+        border: isAlert ? "1px solid #E5484D" : "1px solid #2B8A3E",
+        animation: "toastSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     >
       {isAlert ? (
-        <AlertTriangle style={{ width: 18, height: 18, color: "var(--alert)", flexShrink: 0 }} />
+        <AlertTriangle style={{ width: 16, height: 16, color: "#FF8787", flexShrink: 0 }} />
       ) : (
-        <CheckCircle2 style={{ width: 18, height: 18, color: "var(--stamp)", flexShrink: 0 }} />
+        <CheckCircle2 style={{ width: 16, height: 16, color: "#69DB7C", flexShrink: 0 }} />
       )}
-      <span style={{ lineHeight: 1.4 }}>{toast}</span>
+      <span style={{ lineHeight: 1.35, color: "#FFFFFF", flex: 1 }}>{toast}</span>
 
       <style jsx>{`
-        @keyframes slideUp {
+        @keyframes toastSlideUp {
           from {
             opacity: 0;
-            transform: translate(-50%, 12px);
+            transform: translate(-50%, 14px) scale(0.96);
           }
           to {
             opacity: 1;
-            transform: translate(-50%, 0);
+            transform: translate(-50%, 0) scale(1);
           }
         }
       `}</style>
