@@ -22,6 +22,8 @@ import {
   X,
   ShieldAlert,
   Coins,
+  ArrowRight,
+  Lock,
 } from "lucide-react";
 
 export default function UploadPage() {
@@ -70,7 +72,7 @@ export default function UploadPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) {
-      flash("Please log in before uploading.");
+      flash("Please sign in before uploading.");
       return;
     }
     if (checking || imageBusy) return;
@@ -143,27 +145,29 @@ export default function UploadPage() {
 
   if (!currentUser) {
     return (
-      <div style={{ maxWidth: 500, margin: "60px auto 0", textAlign: "center" }}>
-        <div className="ticket" style={{ padding: "36px 24px" }}>
-          <div className="label" style={{ color: "var(--stamp)", marginBottom: 8 }}>
+      <div style={{ maxWidth: 460, margin: "50px auto 0", textAlign: "center" }}>
+        <div className="card" style={{ padding: "32px 24px" }}>
+          <div className="pill brand" style={{ marginBottom: 12 }}>
+            <Lock style={{ width: 12, height: 12 }} />
             Authentication Required
           </div>
-          <h2 style={{ fontFamily: "var(--display)", fontSize: 32, marginBottom: 12 }}>
-            SIGN IN TO UPLOAD CLAIMABLES
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
+            Sign in to Upload Claimables
           </h2>
-          <p style={{ color: "var(--ink-muted)", fontSize: 14, lineHeight: 1.5, marginBottom: 24 }}>
-            You need an active exchange account to submit coupons, earn upfront points, and build your credit score.
+          <p style={{ color: "var(--ink-muted)", fontSize: 13.5, lineHeight: 1.5, marginBottom: 20 }}>
+            Create an account or sign in to submit vouchers, earn upfront points, and start trading with peers.
           </p>
           <button
             type="button"
-            className="btn stamp"
+            className="btn primary"
             onClick={() => {
-              const navBtn = document.querySelector("header button.btn.stamp") as HTMLButtonElement;
+              const navBtn = document.querySelector("header button.btn.primary") as HTMLButtonElement;
               if (navBtn) navBtn.click();
-              else flash("Click 'Log in / Sign up' in the top right corner to get started.");
+              else flash("Click 'Sign up' in the top right corner to get started.");
             }}
           >
-            Log In / Create Account
+            Log In / Sign Up
+            <ArrowRight style={{ width: 14, height: 14 }} />
           </button>
         </div>
       </div>
@@ -171,52 +175,73 @@ export default function UploadPage() {
   }
 
   return (
-    <div style={{ maxWidth: 620, margin: "40px auto 0" }}>
-      <div style={{ marginBottom: 24, textAlign: "center" }}>
-        <h2 style={{ fontFamily: "var(--display)", fontSize: 40, marginBottom: 4 }}>
-          UPLOAD A CLAIMABLE
+    <div style={{ maxWidth: 540, margin: "30px auto 0" }}>
+      <div style={{ marginBottom: 20, textAlign: "center" }}>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>
+          Upload a Claimable
         </h2>
-        <p style={{ color: "var(--ink-muted)", fontSize: 14, maxWidth: 520, margin: "0 auto" }}>
-          Deterministic checks run instantly in milliseconds, followed by Google Gemini <strong>Claim AI</strong> review.
+        <p style={{ color: "var(--ink-muted)", fontSize: 13.5, maxWidth: 440, margin: "0 auto" }}>
+          Audited by <strong>Google Gemini Claim AI</strong> for authenticity, OCR code scanning, and instant upfront points.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="ticket" style={{ padding: 28 }}>
+      <form onSubmit={handleSubmit} className="card" style={{ padding: "24px 22px" }}>
         {/* Type Toggle */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+        <div
+          style={{
+            display: "flex",
+            background: "var(--canvas)",
+            padding: 3,
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border)",
+            marginBottom: 18,
+          }}
+        >
           <button
             type="button"
-            className={`btn ${type === "code" ? "stamp" : "secondary"}`}
-            style={{ flex: 1, padding: "12px 14px" }}
+            className={`btn ${type === "code" ? "primary" : "secondary"}`}
+            style={{
+              flex: 1,
+              padding: "7px 12px",
+              border: "none",
+              boxShadow: type === "code" ? "var(--shadow-xs)" : "none",
+              background: type === "code" ? "var(--brand)" : "transparent",
+            }}
             onClick={() => setType("code")}
           >
-            <FileText style={{ width: 16, height: 16 }} />
+            <FileText style={{ width: 14, height: 14 }} />
             Text Code
           </button>
           <button
             type="button"
-            className={`btn ${type === "photo" ? "stamp" : "secondary"}`}
-            style={{ flex: 1, padding: "12px 14px" }}
+            className={`btn ${type === "photo" ? "primary" : "secondary"}`}
+            style={{
+              flex: 1,
+              padding: "7px 12px",
+              border: "none",
+              boxShadow: type === "photo" ? "var(--shadow-xs)" : "none",
+              background: type === "photo" ? "var(--brand)" : "transparent",
+            }}
             onClick={() => setType("photo")}
           >
-            <Camera style={{ width: 16, height: 16 }} />
+            <Camera style={{ width: 14, height: 14 }} />
             Voucher Photo
           </button>
         </div>
 
         {/* Brand & Offer Title */}
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 12 }}>
           <label className="label">Brand / Company</label>
           <input
             className="input"
             required
-            placeholder="e.g. Starbucks, Target, Nike, DoorDash"
+            placeholder="e.g. Starbucks, Target, Nike, Uber Eats"
             value={brand}
             onChange={(e) => setBrand(e.target.value)}
           />
         </div>
 
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 12 }}>
           <label className="label">Offer Title / Discount</label>
           <input
             className="input"
@@ -229,19 +254,19 @@ export default function UploadPage() {
 
         {/* Text Code or Photo Upload */}
         {type === "code" ? (
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 14 }}>
             <label className="label">Coupon / Voucher Code</label>
             <input
               className="input"
               required
-              style={{ fontFamily: "var(--mono)", letterSpacing: "0.05em" }}
-              placeholder="e.g. COFFEE20OFF or VOUCHER-9876"
+              style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+              placeholder="e.g. SAVE20OFF or VOUCHER-9876"
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
             />
           </div>
         ) : (
-          <div style={{ marginBottom: 18 }}>
+          <div style={{ marginBottom: 14 }}>
             <label className="label">Photo of Voucher / Gift Card Receipt</label>
             <input
               ref={fileInputRef}
@@ -249,24 +274,24 @@ export default function UploadPage() {
               accept="image/*"
               required={!imageDataUrl}
               onChange={onFileChange}
-              style={{ marginBottom: 10, fontSize: 13, display: "block" }}
+              style={{ marginBottom: 8, fontSize: 13, display: "block" }}
             />
 
             {imageBusy && (
-              <div style={{ fontSize: 12, color: "var(--ink-subtle)", marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: "var(--ink-subtle)", marginBottom: 8 }}>
                 Compressing image for Gemini Vision...
               </div>
             )}
 
             {imageDataUrl && (
-              <div style={{ position: "relative", display: "inline-block", marginBottom: 12 }}>
+              <div style={{ position: "relative", display: "inline-block", marginBottom: 10 }}>
                 <img
                   src={`data:${imageMediaType || "image/jpeg"};base64,${imageDataUrl}`}
                   alt="Uploaded preview"
                   style={{
-                    maxWidth: 180,
-                    borderRadius: 4,
-                    border: "1px solid var(--line)",
+                    maxWidth: 160,
+                    borderRadius: "var(--radius-sm)",
+                    border: "1px solid var(--border)",
                     display: "block",
                   }}
                 />
@@ -276,21 +301,21 @@ export default function UploadPage() {
                   aria-label="Remove photo"
                   style={{
                     position: "absolute",
-                    top: -8,
-                    right: -8,
-                    width: 24,
-                    height: 24,
+                    top: -6,
+                    right: -6,
+                    width: 20,
+                    height: 20,
                     borderRadius: "50%",
                     background: "var(--alert)",
                     color: "#ffffff",
-                    border: "2px solid var(--paper)",
+                    border: "2px solid #ffffff",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     cursor: "pointer",
                   }}
                 >
-                  <X style={{ width: 14, height: 14 }} />
+                  <X style={{ width: 12, height: 12 }} />
                 </button>
               </div>
             )}
@@ -300,7 +325,7 @@ export default function UploadPage() {
             </label>
             <input
               className="input"
-              placeholder="e.g. Pin code is located on the lower right corner under the scratch layer"
+              placeholder="e.g. Barcode is on the reverse side"
               value={imageNote}
               onChange={(e) => setImageNote(e.target.value)}
             />
@@ -308,7 +333,7 @@ export default function UploadPage() {
         )}
 
         {/* Category & Redemption Method */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
           <div>
             <label className="label">Category</label>
             <select
@@ -325,7 +350,7 @@ export default function UploadPage() {
           </div>
 
           <div>
-            <label className="label">Redemption Channel</label>
+            <label className="label">Channel</label>
             <select
               className="input"
               value={redemptionMethod}
@@ -341,7 +366,7 @@ export default function UploadPage() {
         </div>
 
         {/* Currency, Value, Expiry */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 1.6fr", gap: 12, marginBottom: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 1.5fr", gap: 10, marginBottom: 18 }}>
           <div>
             <label className="label">Currency</label>
             <select
@@ -372,7 +397,7 @@ export default function UploadPage() {
           </div>
 
           <div>
-            <label className="label">Expiration Date</label>
+            <label className="label">Expiry Date</label>
             <input
               className="input"
               type="date"
@@ -387,18 +412,18 @@ export default function UploadPage() {
         {/* Submit Button */}
         <button
           type="submit"
-          className="btn stamp"
-          style={{ width: "100%", padding: "14px 20px", fontSize: 16 }}
+          className="btn primary"
+          style={{ width: "100%", padding: "11px 18px", fontSize: 14.5 }}
           disabled={checking || imageBusy}
         >
           {checking ? (
             <>
-              <Sparkles style={{ width: 18, height: 18 }} />
+              <Sparkles style={{ width: 16, height: 16 }} />
               Auditing with Gemini Claim AI...
             </>
           ) : (
             <>
-              <UploadCloud style={{ width: 18, height: 18 }} />
+              <UploadCloud style={{ width: 16, height: 16 }} />
               Submit to Claim AI
             </>
           )}
@@ -408,61 +433,61 @@ export default function UploadPage() {
       {/* AI Review Result Card */}
       {result && (
         <div
-          className="ticket"
+          className="card"
           style={{
-            marginTop: 20,
-            padding: 22,
-            borderWidth: 2,
-            borderColor: result.valid ? "var(--stamp)" : "var(--alert)",
-            background: result.valid ? "var(--stamp-light)" : "var(--alert-light)",
+            marginTop: 16,
+            padding: 18,
+            borderColor: result.valid ? "rgba(30,94,58,0.3)" : "rgba(194,65,45,0.3)",
+            background: result.valid ? "var(--brand-light)" : "var(--alert-light)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
             {result.valid ? (
-              <CheckCircle2 style={{ width: 22, height: 22, color: "var(--stamp)" }} />
+              <CheckCircle2 style={{ width: 18, height: 18, color: "var(--brand)" }} />
             ) : (
-              <ShieldAlert style={{ width: 22, height: 22, color: "var(--alert)" }} />
+              <ShieldAlert style={{ width: 18, height: 18, color: "var(--alert)" }} />
             )}
             <h4
               style={{
-                fontFamily: "var(--display)",
-                fontSize: 24,
-                color: result.valid ? "var(--stamp)" : "var(--alert)",
+                fontFamily: "var(--font-display)",
+                fontSize: 16,
+                fontWeight: 700,
+                color: result.valid ? "var(--brand)" : "var(--alert)",
               }}
             >
               {result.valid ? "APPROVED & VERIFIED" : "VERIFICATION FAILED"}
             </h4>
           </div>
 
-          <p style={{ fontSize: 14, lineHeight: 1.5, color: "var(--ink)" }}>
+          <p style={{ fontSize: 13, lineHeight: 1.45, color: "var(--ink)" }}>
             {result.reason}
           </p>
 
           {result.detectedCode && (
-            <div style={{ marginTop: 10, fontSize: 13, color: "var(--ink-secondary)" }}>
+            <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--ink-secondary)" }}>
               OCR Identifier Scanned:{" "}
-              <strong style={{ fontFamily: "var(--mono)" }}>{result.detectedCode}</strong>
+              <strong style={{ fontFamily: "var(--font-mono)" }}>{result.detectedCode}</strong>
             </div>
           )}
 
           {result.valid && (
             <div
               style={{
-                marginTop: 14,
-                padding: "10px 14px",
+                marginTop: 10,
+                padding: "8px 12px",
                 background: "#ffffff",
-                borderRadius: 4,
-                border: "1px dashed var(--line)",
-                fontSize: 13,
+                borderRadius: "var(--radius-sm)",
+                border: "1px dashed var(--border)",
+                fontSize: 12,
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
+                gap: 6,
               }}
             >
-              <Coins style={{ width: 16, height: 16, color: "var(--gold)" }} />
+              <Coins style={{ width: 14, height: 14, color: "var(--gold)" }} />
               <span>
-                <strong>25% upfront points</strong> added to your wallet now. The remaining{" "}
-                <strong>75% points</strong> will transfer once a recipient redeems and confirms it!
+                <strong>25% upfront points</strong> credited to your wallet now. The remaining{" "}
+                <strong>75%</strong> will transfer once confirmed by a redeemer!
               </span>
             </div>
           )}

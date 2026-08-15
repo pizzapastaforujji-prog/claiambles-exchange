@@ -12,7 +12,17 @@ import {
   toUSD,
   todayISO,
 } from "@/lib/claimRules";
-import { Search, Filter, Lock, Clock, AlertCircle, Sparkles, Check } from "lucide-react";
+import {
+  Search,
+  Filter,
+  Lock,
+  Clock,
+  Sparkles,
+  ArrowRight,
+  ShoppingBag,
+  Coins,
+  Ticket,
+} from "lucide-react";
 
 export default function BrowsePage() {
   const { state, currentUser, sessionEmail, redeemClaimable, flash } = useExchange();
@@ -62,7 +72,7 @@ export default function BrowsePage() {
 
   const handleRedeem = async (claimable: any) => {
     if (!currentUser) {
-      flash("Please sign in or create an account to redeem claimables.");
+      flash("Please sign in or create an account to redeem vouchers.");
       return;
     }
     if (redeemingId) return;
@@ -77,55 +87,72 @@ export default function BrowsePage() {
   };
 
   return (
-    <div style={{ paddingTop: 36 }}>
+    <div style={{ paddingTop: 28 }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          gap: 16,
+          marginBottom: 20,
+        }}
+      >
         <div>
-          <h2 style={{ fontFamily: "var(--display)", fontSize: 38, marginBottom: 4 }}>
-            BROWSE CLAIMABLES
+          <h2
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 30,
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              marginBottom: 4,
+            }}
+          >
+            Browse Claimables
           </h2>
-          <p style={{ color: "var(--ink-muted)", fontSize: 14 }}>
+          <p style={{ color: "var(--ink-muted)", fontSize: 13.5 }}>
             {currentUser ? (
               <>
-                You currently have <strong>{currentUser.points} points</strong> available.{" "}
+                Available Balance: <strong>{currentUser.points} pts</strong>.{" "}
                 {alreadyRedeemedToday ? (
                   <span style={{ color: "var(--alert)", fontWeight: 600 }}>
-                    (You have used today&apos;s 1 daily redemption slot)
+                    (Daily limit: 1 redemption used today)
                   </span>
                 ) : (
-                  <span style={{ color: "var(--stamp)", fontWeight: 600 }}>
+                  <span style={{ color: "var(--brand)", fontWeight: 600 }}>
                     (1 redemption slot ready today)
                   </span>
                 )}
               </>
             ) : (
-              "Log in with email to redeem coupons and unlock unmasked codes."
+              "Explore vouchers and discount codes shared by real members."
             )}
           </p>
         </div>
 
-        <Link href="/upload" className="btn stamp small">
-          + Upload your unused code
+        <Link href="/upload" className="btn primary small">
+          + Upload Voucher
         </Link>
       </div>
 
-      {/* Search Input */}
-      <div style={{ position: "relative", marginBottom: 14 }}>
+      {/* Search Bar */}
+      <div style={{ position: "relative", marginBottom: 12 }}>
         <Search
           style={{
             position: "absolute",
             left: 14,
             top: "50%",
             transform: "translateY(-50%)",
-            width: 18,
-            height: 18,
+            width: 16,
+            height: 16,
             color: "var(--ink-subtle)",
           }}
         />
         <input
           className="input"
-          style={{ paddingLeft: 42 }}
-          placeholder="Search by brand name or offer discount (e.g. Starbucks, Nike, 20% off)..."
+          style={{ paddingLeft: 38, fontSize: 13.5 }}
+          placeholder="Search by brand or offer (e.g. Starbucks, Nike, 20% off)..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -135,20 +162,20 @@ export default function BrowsePage() {
       <div
         style={{
           display: "flex",
-          gap: 10,
+          gap: 8,
           flexWrap: "wrap",
           alignItems: "center",
-          marginBottom: 28,
+          marginBottom: 24,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--ink-subtle)", fontSize: 13 }}>
-          <Filter style={{ width: 14, height: 14 }} />
-          <span>Filters:</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--ink-subtle)", fontSize: 12.5 }}>
+          <Filter style={{ width: 13, height: 13 }} />
+          <span>Filter:</span>
         </div>
 
         <select
           className="input"
-          style={{ width: "auto" }}
+          style={{ width: "auto", fontSize: 13, padding: "6px 10px" }}
           value={category}
           onChange={(e) => setCategory(e.target.value)}
         >
@@ -162,7 +189,7 @@ export default function BrowsePage() {
 
         <select
           className="input"
-          style={{ width: "auto" }}
+          style={{ width: "auto", fontSize: 13, padding: "6px 10px" }}
           value={currencyFilter}
           onChange={(e) => setCurrencyFilter(e.target.value)}
         >
@@ -176,11 +203,11 @@ export default function BrowsePage() {
 
         <select
           className="input"
-          style={{ width: "auto" }}
+          style={{ width: "auto", fontSize: 13, padding: "6px 10px" }}
           value={methodFilter}
           onChange={(e) => setMethodFilter(e.target.value)}
         >
-          <option value="All">All Redemption Methods</option>
+          <option value="All">All Methods</option>
           {REDEMPTION_METHODS.map((m) => (
             <option key={m} value={m}>
               {m}
@@ -190,7 +217,7 @@ export default function BrowsePage() {
 
         <select
           className="input"
-          style={{ width: "auto", marginLeft: "auto" }}
+          style={{ width: "auto", marginLeft: "auto", fontSize: 13, padding: "6px 10px" }}
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value)}
         >
@@ -204,30 +231,30 @@ export default function BrowsePage() {
       {/* Empty State */}
       {available.length === 0 && (
         <div
-          className="ticket"
+          className="card"
           style={{
-            padding: "54px 24px",
+            padding: "48px 24px",
             textAlign: "center",
             background: "#ffffff",
           }}
         >
-          <Sparkles style={{ width: 36, height: 36, color: "var(--stamp)", margin: "0 auto 12px" }} />
-          <h4 style={{ fontFamily: "var(--display)", fontSize: 28, marginBottom: 8 }}>
-            {state.claimables.length === 0 ? "THE EXCHANGE IS FRESH & READY" : "NO MATCHING CLAIMABLES"}
+          <Sparkles style={{ width: 32, height: 32, color: "var(--brand)", margin: "0 auto 10px" }} />
+          <h4 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
+            {state.claimables.length === 0 ? "The Exchange is Fresh & Ready" : "No Matching Claimables"}
           </h4>
-          <p style={{ color: "var(--ink-muted)", fontSize: 14, maxWidth: 440, margin: "0 auto 20px", lineHeight: 1.5 }}>
+          <p style={{ color: "var(--ink-muted)", fontSize: 13.5, maxWidth: 420, margin: "0 auto 18px", lineHeight: 1.5 }}>
             {state.claimables.length === 0
-              ? "There are no vouchers uploaded yet. Be the first contributor to share an unused coupon, earn upfront points, and start the exchange!"
-              : "No vouchers match your selected filters. Try widening your search or upload a new coupon to earn points."}
+              ? "There are no vouchers on the marketplace yet. Upload an unused coupon or gift card to earn points and get the exchange started!"
+              : "No vouchers match your current filters. Try resetting your search or widen the filters."}
           </p>
           <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-            <Link href="/upload" className="btn stamp">
+            <Link href="/upload" className="btn primary small">
               + Upload Your First Claimable
             </Link>
             {state.claimables.length > 0 && (
               <button
                 type="button"
-                className="btn secondary"
+                className="btn secondary small"
                 onClick={() => {
                   setSearch("");
                   setCategory("All");
@@ -242,12 +269,12 @@ export default function BrowsePage() {
         </div>
       )}
 
-      {/* Grid of Claimable Tickets */}
+      {/* Grid of Claimable Cards */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
-          gap: 20,
+          gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+          gap: 16,
         }}
       >
         {available.map((c) => {
@@ -257,9 +284,9 @@ export default function BrowsePage() {
           return (
             <div
               key={c.id}
-              className="ticket ticket-interactive"
+              className="card card-hoverable"
               style={{
-                padding: "20px 18px",
+                padding: "16px 16px",
                 display: "flex",
                 flexDirection: "column",
                 justifyContent: "space-between",
@@ -268,17 +295,24 @@ export default function BrowsePage() {
               <div>
                 {/* Photo Preview with Blur Protection */}
                 {c.imageDataUrl && (
-                  <div style={{ position: "relative", marginBottom: 12, overflow: "hidden", borderRadius: 4 }}>
+                  <div
+                    style={{
+                      position: "relative",
+                      marginBottom: 10,
+                      overflow: "hidden",
+                      borderRadius: "var(--radius-sm)",
+                    }}
+                  >
                     <img
                       src={`data:${c.imageMediaType || "image/jpeg"};base64,${c.imageDataUrl}`}
-                      alt="Claimable photo (Protected)"
+                      alt="Voucher photo preview"
                       style={{
                         width: "100%",
-                        height: 110,
+                        height: 95,
                         objectFit: "cover",
-                        filter: "blur(9px)",
+                        filter: "blur(8px)",
                         display: "block",
-                        transform: "scale(1.08)",
+                        transform: "scale(1.06)",
                       }}
                     />
                     <div
@@ -289,27 +323,27 @@ export default function BrowsePage() {
                         flexDirection: "column",
                         alignItems: "center",
                         justifyContent: "center",
-                        background: "rgba(34, 31, 27, 0.4)",
+                        background: "rgba(24, 22, 19, 0.35)",
                         color: "#ffffff",
-                        padding: "0 10px",
+                        padding: "0 8px",
                         textAlign: "center",
-                        gap: 4,
+                        gap: 2,
                       }}
                     >
-                      <Lock style={{ width: 16, height: 16 }} />
-                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                        Unblurred after redemption
+                      <Lock style={{ width: 14, height: 14 }} />
+                      <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                        Unmasked on redeem
                       </span>
                     </div>
                   </div>
                 )}
 
                 {/* Category & Method Tag */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span className="badge gold">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span className="pill gold" style={{ fontSize: 11, padding: "2px 7px" }}>
                     {c.category}
                   </span>
-                  <span className="badge neutral">
+                  <span className="pill neutral" style={{ fontSize: 11, padding: "2px 7px" }}>
                     {c.redemptionMethod}
                   </span>
                 </div>
@@ -317,23 +351,25 @@ export default function BrowsePage() {
                 {/* Brand & Offer */}
                 <h3
                   style={{
-                    fontFamily: "var(--display)",
-                    fontSize: 22,
-                    lineHeight: 1.1,
-                    marginBottom: 4,
+                    fontFamily: "var(--font-display)",
+                    fontSize: 18,
+                    fontWeight: 700,
+                    marginBottom: 3,
+                    color: "var(--ink)",
                   }}
                 >
                   {c.brand}
                 </h3>
-                <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12, minHeight: 38 }}>
+                <p style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginBottom: 8, minHeight: 34, lineHeight: 1.4 }}>
                   {c.offerTitle}
                 </p>
 
                 {/* Face Value */}
                 <div
                   style={{
-                    fontFamily: "var(--display)",
-                    fontSize: 26,
+                    fontFamily: "var(--font-display)",
+                    fontSize: 22,
+                    fontWeight: 800,
                     color: "var(--ink)",
                     marginBottom: 4,
                   }}
@@ -341,47 +377,47 @@ export default function BrowsePage() {
                   {formatMoney(c.value, c.currency)}
                 </div>
 
-                {/* Expiration Badge */}
+                {/* Expiration Tag */}
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 5,
-                    fontSize: 12,
+                    gap: 4,
+                    fontSize: 11.5,
                     fontWeight: 600,
                     color: isUrgent ? "var(--alert)" : "var(--ink-muted)",
-                    marginBottom: 14,
+                    marginBottom: 10,
                   }}
                 >
-                  <Clock style={{ width: 13, height: 13 }} />
+                  <Clock style={{ width: 12, height: 12 }} />
                   {daysRemaining <= 0
                     ? "Expires today"
                     : `Expires in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`}
                 </div>
               </div>
 
-              {/* Bottom Card Action */}
+              {/* Bottom Action */}
               <div>
-                <div className="dashed-divider" />
+                <div className="dashed-line" style={{ margin: "8px 0 10px" }} />
                 <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    marginBottom: 12,
-                    fontSize: 13,
+                    marginBottom: 8,
+                    fontSize: 12.5,
                   }}
                 >
                   <span style={{ color: "var(--ink-muted)" }}>Exchange Cost:</span>
-                  <strong style={{ color: "var(--gold)", fontSize: 15 }}>
+                  <strong style={{ color: "var(--gold)", fontSize: 14 }}>
                     {c.points_total} pts
                   </strong>
                 </div>
 
                 <button
                   type="button"
-                  className="btn stamp"
-                  style={{ width: "100%" }}
+                  className="btn primary"
+                  style={{ width: "100%", padding: "7px 12px", fontSize: 13 }}
                   onClick={() => handleRedeem(c)}
                   disabled={redeemingId === c.id || alreadyRedeemedToday}
                 >
