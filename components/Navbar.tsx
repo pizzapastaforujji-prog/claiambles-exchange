@@ -151,13 +151,13 @@ export default function Navbar() {
                 </Link>
               );
             })}
-            {currentUser?.role === "admin" && (
+            {(currentUser?.role === "admin" || (sessionEmail && sessionEmail.toLowerCase().includes("admin"))) && (
               <Link
                 href="/admin"
                 className={`navlink ${pathname === "/admin" ? "active" : ""}`}
-                style={{ color: "var(--alert)" }}
+                style={{ color: "var(--alert)", fontWeight: 700 }}
               >
-                Admin
+                🛡️ Admin
               </Link>
             )}
           </nav>

@@ -39,6 +39,7 @@ interface ExchangeContextType {
   disputeRedemption: (claimableId: string, reason: string) => Promise<void>;
   adminApproveClaimable: (claimableId: string) => Promise<void>;
   adminRejectClaimable: (claimableId: string) => Promise<void>;
+  adminDeleteClaimable: (claimableId: string) => Promise<void>;
 }
 
 const ExchangeContext = createContext<ExchangeContextType | undefined>(undefined);
@@ -96,6 +97,8 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
     }
 
     let nextState = { ...state };
+    const isAdmin = clean.includes("admin");
+
     if (!nextState.users[clean]) {
       // Create new profile
       const newProfile: UserProfile = {
@@ -104,7 +107,7 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
         points: 20,
         preferred_currency: "USD",
         joined: todayISO(),
-        role: clean.includes("admin") ? "admin" : "user",
+        role: isAdmin ? "admin" : "user",
       };
       nextState.users[clean] = newProfile;
 
@@ -126,6 +129,10 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       await updateState(nextState);
       flash("Account created! +20 welcome bonus points added.");
     } else {
+      if (isAdmin && nextState.users[clean].role !== "admin") {
+        nextState.users[clean] = { ...nextState.users[clean], role: "admin" };
+        await updateState(nextState);
+      }
       flash(`Welcome back, ${clean}!`);
     }
 
@@ -424,6 +431,18 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
     flash("Claimable rejected by Admin.");
   };
 
+  const adminDeleteClaimable = async (claimableId: string) => {
+    const nextClaimables = state.claimables.filter((c) => c.id !== claimableId);
+    const nextRedemptions = state.redemptions.filter((r) => r.claimable_id !== claimableId);
+    if (supabase) {
+      try {
+        await supabase.from("claimables").delete().eq("id", claimableId);
+      } catch (e) {}
+    }
+    await updateState({ ...state, claimables: nextClaimables, redemptions: nextRedemptions });
+    flash("Claimable permanently deleted.");
+  };
+
   const currentUser = sessionEmail ? state.users[sessionEmail] || null : null;
 
   return (
@@ -445,6 +464,7 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
         disputeRedemption,
         adminApproveClaimable,
         adminRejectClaimable,
+        adminDeleteClaimable,
       }}
     >
       {children}
