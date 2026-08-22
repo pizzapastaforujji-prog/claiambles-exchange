@@ -4,17 +4,13 @@ import { todayISO } from "./claimRules";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 
-// Google Gemini API keys always start with "AIza"
-const GEMINI_KEY_VALID = GEMINI_API_KEY.startsWith("AIza") && GEMINI_API_KEY.length > 20;
+// Google Gemini API keys can start with "AIza" or "AQ."
+const GEMINI_KEY_VALID = Boolean(
+  GEMINI_API_KEY &&
+  (GEMINI_API_KEY.startsWith("AIza") || GEMINI_API_KEY.startsWith("AQ.") || GEMINI_API_KEY.length > 25)
+);
 
-if (GEMINI_API_KEY && !GEMINI_KEY_VALID) {
-  console.warn(
-    "⚠️ GEMINI_API_KEY looks invalid (should start with 'AIza'). " +
-    "Get a valid key at: https://aistudio.google.com/app/apikey"
-  );
-}
-
-function getGeminiModel(modelName = "gemini-2.0-flash") {
+function getGeminiModel(modelName = "gemini-3.6-flash") {
   if (!GEMINI_KEY_VALID) {
     return null;
   }
@@ -41,7 +37,7 @@ export interface PlausibilityParams {
 }
 
 /**
- * Runs Google Gemini 2.0 Flash AI Deep Verification and Vision Extraction
+ * Runs Google Gemini AI Deep Verification and Vision Extraction
  */
 export async function runGeminiPlausibilityCheck(
   candidate: PlausibilityParams
@@ -64,7 +60,7 @@ export async function runGeminiPlausibilityCheck(
   }
 
   try {
-    const model = getGeminiModel("gemini-2.0-flash") || getGeminiModel("gemini-1.5-flash");
+    const model = getGeminiModel("gemini-3.6-flash") || getGeminiModel("gemini-3.7-flash");
     if (!model) {
       return offlineHeuristicCheck(candidate, today);
     }
