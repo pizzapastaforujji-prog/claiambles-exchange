@@ -201,14 +201,16 @@ export async function insertClaimable(c: Claimable): Promise<string | null> {
       type: c.type,
       brand: c.brand,
       offer_title: c.offerTitle,
+      discount_type: c.discountType || "amount",
       code: c.code,
       image_data_base64: c.imageDataUrl,
       image_media_type: c.imageMediaType,
       image_note: c.imageNote,
-      category: c.category,
-      redemption_method: c.redemptionMethod,
+      category: c.category || "Other",
+      redemption_method: c.redemptionMethod || "Online",
       currency: c.currency || "USD",
       face_value: c.value || 0,
+      percent_off: c.percentOff ?? null,
       expiry_date: c.expiry,
       status: c.status,
       uploader_email: c.uploader,
@@ -222,15 +224,16 @@ export async function insertClaimable(c: Claimable): Promise<string | null> {
     const { data, error } = await supabase.from("claimables").insert(payload).select("id").single();
 
     if (error) {
-      console.warn("insertClaimable error:", error);
+      console.error("insertClaimable error:", JSON.stringify(error));
       return null;
     }
     return data?.id ? String(data.id) : null;
   } catch (e) {
-    console.warn("insertClaimable failed:", e);
+    console.error("insertClaimable exception:", e);
     return null;
   }
 }
+
 
 export async function updateClaimableStatus(
   id: string,
