@@ -4,8 +4,18 @@ import { todayISO } from "./claimRules";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 
+// Google Gemini API keys always start with "AIza"
+const GEMINI_KEY_VALID = GEMINI_API_KEY.startsWith("AIza") && GEMINI_API_KEY.length > 20;
+
+if (GEMINI_API_KEY && !GEMINI_KEY_VALID) {
+  console.warn(
+    "⚠️ GEMINI_API_KEY looks invalid (should start with 'AIza'). " +
+    "Get a valid key at: https://aistudio.google.com/app/apikey"
+  );
+}
+
 function getGeminiModel(modelName = "gemini-2.0-flash") {
-  if (!GEMINI_API_KEY) {
+  if (!GEMINI_KEY_VALID) {
     return null;
   }
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -38,9 +48,18 @@ export async function runGeminiPlausibilityCheck(
 ): Promise<ClaimAIVerdict> {
   const today = candidate.currentDate || todayISO();
 
-  // If no Gemini API key is configured in environment, return heuristic check
-  if (!GEMINI_API_KEY) {
-    console.warn("GEMINI_API_KEY not configured. Running offline heuristic checks.");
+  // If Gemini API key is missing or invalid, fall back depending on type
+  if (!GEMINI_KEY_VALID) {
+    if (candidate.type === "photo") {
+      // Cannot verify photo vouchers without a working Vision AI key
+      return {
+        valid: false,
+        reason: "AI photo verification is currently unavailable. Please ask the admin to configure a valid Gemini API key, or submit a text promo code instead.",
+        source: "rules-fallback",
+      };
+    }
+    // For code-only uploads, allow heuristic check
+    console.warn("GEMINI_API_KEY not configured or invalid. Running offline heuristic checks for code.");
     return offlineHeuristicCheck(candidate, today);
   }
 
@@ -166,7 +185,15 @@ Respond ONLY with a valid raw JSON object matching this schema without markdown 
       };
     }
   } catch (err: any) {
-    console.error("Gemini API error, falling back to heuristic:", err);
+    console.error("Gemini API error:", err?.message || err);
+    if (candidate.type === "photo") {
+      // Cannot verify photos without working AI — reject for safety
+      return {
+        valid: false,
+        reason: "AI photo verification encountered an error. Please try again or submit a text promo code instead.",
+        source: "rules-fallback",
+      };
+    }
     return offlineHeuristicCheck(candidate, today);
   }
 }
