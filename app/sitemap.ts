@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://claiambles-exchange.vercel.app';
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://passthepromo.vercel.app';
 
   return [
     {
