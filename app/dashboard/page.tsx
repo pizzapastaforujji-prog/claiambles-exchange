@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useExchange } from "@/lib/ExchangeContext";
-import { daysUntil, formatMoney } from "@/lib/claimRules";
+import { daysUntil, formatDiscount } from "@/lib/claimRules";
 import {
   Coins,
   ShieldCheck,
@@ -41,10 +41,10 @@ export default function DashboardPage() {
             Sign In to View Dashboard
           </h3>
           <p style={{ color: "var(--ink-muted)", fontSize: 13.5, marginBottom: 18 }}>
-            Access your unmasked voucher codes, manage escrow points, and view your uploads.
+            Access your unmasked voucher codes, manage escrow points, and view your uploaded promos.
           </p>
           <Link href="/browse" className="btn primary">
-            Browse Claimables
+            Browse Marketplace
           </Link>
         </div>
       </div>
@@ -129,7 +129,7 @@ export default function DashboardPage() {
         </div>
 
         <Link href="/upload" className="btn primary small">
-          + Upload Claimable
+          + Pass a Promo
         </Link>
       </div>
 
@@ -172,7 +172,7 @@ export default function DashboardPage() {
           <div style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 800, margin: "3px 0" }}>
             {myUploads.length}
           </div>
-          <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>Vouchers shared</div>
+          <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>Promos shared</div>
         </div>
 
         <div className="card" style={{ padding: "16px 18px" }}>
@@ -220,7 +220,7 @@ export default function DashboardPage() {
                         {c.brand} — {c.offerTitle}
                       </h4>
                       <div style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
-                        Face Value: <strong>{formatMoney(c.value, c.currency)}</strong> · Cost: <strong>{c.points_total} pts</strong>
+                        Discount: <strong>{formatDiscount(c)}</strong> · Cost: <strong>{c.points_total} pts</strong>
                       </div>
                     </div>
 
@@ -248,99 +248,118 @@ export default function DashboardPage() {
                       <div className="label" style={{ color: "var(--brand)", marginBottom: 4 }}>
                         Unmasked Code / Voucher Identifier
                       </div>
-
-                      {c.type === "code" ? (
-                        <div className="code-pill" style={{ marginBottom: 10 }}>
-                          <span>{c.code}</span>
-                          <button
-                            type="button"
-                            className="btn secondary small"
-                            onClick={() => copyCode(c.code || "", c.id)}
-                            style={{ padding: "3px 8px", fontSize: 11.5 }}
-                          >
-                            {copiedId === c.id ? (
-                              <>
-                                <Check style={{ width: 12, height: 12, color: "var(--brand)" }} />
-                                Copied
-                              </>
-                            ) : (
-                              <>
-                                <Copy style={{ width: 12, height: 12 }} />
-                                Copy Code
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      ) : (
-                        c.imageDataUrl && (
-                          <div style={{ marginBottom: 12 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "10px 14px",
+                          background: "#ffffff",
+                          borderRadius: "var(--radius-sm)",
+                          border: "1px solid var(--border)",
+                          marginBottom: 12,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {c.code ? (
+                          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span
+                              style={{
+                                fontFamily: "var(--font-mono)",
+                                fontSize: 17,
+                                fontWeight: 700,
+                                letterSpacing: "0.06em",
+                                color: "var(--brand)",
+                              }}
+                            >
+                              {c.code}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn secondary small"
+                              onClick={() => copyCode(c.code!, c.id)}
+                            >
+                              {copiedId === c.id ? <Check style={{ width: 13, height: 13 }} /> : <Copy style={{ width: 13, height: 13 }} />}
+                              {copiedId === c.id ? "Copied" : "Copy"}
+                            </button>
+                          </div>
+                        ) : c.imageDataUrl ? (
+                          <div style={{ width: "100%" }}>
                             <img
                               src={`data:${c.imageMediaType || "image/jpeg"};base64,${c.imageDataUrl}`}
-                              alt="Revealed claimable voucher"
+                              alt="Unmasked voucher full photo"
                               style={{
-                                maxWidth: 280,
+                                width: "100%",
+                                maxHeight: 260,
+                                objectFit: "contain",
                                 borderRadius: "var(--radius-sm)",
-                                border: "1px solid var(--border)",
-                                display: "block",
+                                background: "var(--canvas)",
                               }}
                             />
-                            {c.ai_detected_code && (
-                              <div style={{ marginTop: 6, fontSize: 12.5 }}>
-                                OCR Code: <strong>{c.ai_detected_code}</strong>
-                              </div>
+                            {c.imageNote && (
+                              <p style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 6 }}>
+                                Uploader Note: {c.imageNote}
+                              </p>
                             )}
                           </div>
-                        )
+                        ) : null}
+                      </div>
+
+                      {/* Confirmation / Dispute Actions */}
+                      {isPending && (
+                        <div
+                          style={{
+                            padding: "12px 14px",
+                            background: "var(--canvas)",
+                            borderRadius: "var(--radius-sm)",
+                            border: "1px solid var(--border)",
+                          }}
+                        >
+                          <div style={{ fontSize: 12.5, color: "var(--ink)", marginBottom: 8 }}>
+                            Did this voucher work? Confirming releases escrow points to the uploader and boosts your trust score (+5).
+                            {daysRemaining !== null && (
+                              <span style={{ color: "var(--ink-muted)", marginLeft: 6 }}>
+                                (Auto-confirms in {daysRemaining} days)
+                              </span>
+                            )}
+                          </div>
+
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              className="btn primary small"
+                              onClick={() => handleConfirm(c.id)}
+                              disabled={busyId === c.id}
+                            >
+                              <CheckCircle2 style={{ width: 13, height: 13 }} />
+                              Confirm It Worked (+5 Trust)
+                            </button>
+
+                            <div style={{ display: "flex", gap: 6, flex: 1, minWidth: 240 }}>
+                              <input
+                                className="input"
+                                style={{ fontSize: 12, padding: "5px 8px" }}
+                                placeholder="Dispute reason (e.g. Code already used / invalid)..."
+                                value={disputeDrafts[c.id] || ""}
+                                onChange={(e) =>
+                                  setDisputeDrafts({
+                                    ...disputeDrafts,
+                                    [c.id]: e.target.value,
+                                  })
+                                }
+                              />
+                              <button
+                                type="button"
+                                className="btn alert small"
+                                onClick={() => handleDispute(c.id)}
+                                disabled={busyId === c.id}
+                              >
+                                Report Invalid
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       )}
-                    </div>
-                  )}
-
-                  {/* Confirmation & Dispute Loop */}
-                  {isPending && (
-                    <div
-                      style={{
-                        marginTop: 12,
-                        paddingTop: 12,
-                        borderTop: "1px dashed var(--border)",
-                      }}
-                    >
-                      <div style={{ fontSize: 12, color: "var(--ink-subtle)", marginBottom: 8 }}>
-                        {daysRemaining && daysRemaining > 0
-                          ? `⏳ Auto-confirms and releases points to uploader in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} if no dispute is reported.`
-                          : "⏳ Auto-confirming soon."}
-                      </div>
-
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                        <button
-                          type="button"
-                          className="btn primary small"
-                          onClick={() => handleConfirm(c.id)}
-                          disabled={busyId === c.id}
-                        >
-                          <CheckCircle2 style={{ width: 13, height: 13 }} />
-                          {busyId === c.id ? "Processing..." : "Confirm It Worked"}
-                        </button>
-
-                        <input
-                          className="input"
-                          style={{ flex: "1 1 200px", fontSize: 12.5, padding: "5px 9px" }}
-                          placeholder="Reason if reporting invalid..."
-                          value={disputeDrafts[c.id] || ""}
-                          onChange={(e) =>
-                            setDisputeDrafts({ ...disputeDrafts, [c.id]: e.target.value })
-                          }
-                        />
-
-                        <button
-                          type="button"
-                          className="btn alert small"
-                          onClick={() => handleDispute(c.id)}
-                          disabled={busyId === c.id}
-                        >
-                          <AlertCircle style={{ width: 13, height: 13 }} />
-                          Report Invalid
-                        </button>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -350,23 +369,23 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {/* User's Uploads */}
+      {/* Uploaded Promos List */}
       <section>
         <h3 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 700, marginBottom: 12 }}>
-          Your Uploaded Claimables
+          Your Uploaded Promos
         </h3>
 
         {myUploads.length === 0 ? (
           <div className="card" style={{ padding: "26px 20px", textAlign: "center" }}>
             <p style={{ color: "var(--ink-muted)", fontSize: 13.5, marginBottom: 12 }}>
-              You haven&apos;t uploaded any claimables yet. Share your unused vouchers to earn points!
+              You haven&apos;t uploaded any promos yet. Share an unused voucher to earn points instantly!
             </p>
             <Link href="/upload" className="btn primary small">
-              Upload Your First Voucher
+              + Pass a Promo
             </Link>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {myUploads.map((c) => (
               <div
                 key={c.id}
@@ -376,31 +395,24 @@ export default function DashboardPage() {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  gap: 14,
+                  gap: 12,
                   flexWrap: "wrap",
                 }}
               >
                 <div>
-                  <h4 style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 700, marginBottom: 2 }}>
+                  <h4 style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, marginBottom: 2 }}>
                     {c.brand} — {c.offerTitle}
                   </h4>
-                  <div style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
-                    Value: <strong>{formatMoney(c.value, c.currency)}</strong> · Expires: {c.expiry}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--brand)", marginTop: 3 }}>
-                    +{c.points_upfront} pts upfront
-                    {c.status === "confirmed" && (
-                      <strong style={{ color: "var(--brand)" }}> + {c.points_final} pts confirmed</strong>
-                    )}
-                    {c.status === "pending_confirmation" && (
-                      <span style={{ color: "var(--gold)" }}> ({c.points_final} pts in escrow)</span>
-                    )}
+                  <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                    Discount: <strong>{formatDiscount(c)}</strong> · Earned upfront: <strong>+{c.points_upfront} pts</strong> · Escrow: <strong>+{c.points_final} pts</strong>
                   </div>
                 </div>
 
-                <span className={`pill ${statusPillClass[c.status] || "neutral"}`}>
-                  {statusLabel[c.status] || c.status}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className={`pill ${statusPillClass[c.status] || "neutral"}`} style={{ fontSize: 11 }}>
+                    {statusLabel[c.status] || c.status}
+                  </span>
+                </div>
               </div>
             ))}
           </div>

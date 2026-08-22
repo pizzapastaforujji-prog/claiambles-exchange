@@ -1,11 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { ClaimAIVerdict } from "./types";
+import { ClaimAIVerdict, DiscountType } from "./types";
+import { todayISO } from "./claimRules";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 
-/**
- * Initializes Gemini client
- */
 function getGeminiModel(modelName = "gemini-2.0-flash") {
   if (!GEMINI_API_KEY) {
     return null;
@@ -16,63 +14,75 @@ function getGeminiModel(modelName = "gemini-2.0-flash") {
 
 export interface PlausibilityParams {
   type: "code" | "photo";
-  brand: string;
-  offerTitle: string;
-  category: string;
-  redemptionMethod: string;
-  currency: string;
-  value: number | string;
-  expiry: string;
+  brand?: string;
+  offerTitle?: string;
+  category?: string;
+  redemptionMethod?: string;
+  currency?: string;
+  value?: number | string;
+  percentOff?: number | string;
+  discountType?: DiscountType;
+  expiry?: string;
   code?: string;
   imageDataUrl?: string; // base64 without prefix
   imageMediaType?: string;
   imageNote?: string;
+  currentDate?: string;
 }
 
 /**
- * Runs Google Gemini AI Plausibility Check and Multimodal OCR
+ * Runs Google Gemini 2.0 Flash AI Deep Verification and Vision Extraction
  */
 export async function runGeminiPlausibilityCheck(
   candidate: PlausibilityParams
 ): Promise<ClaimAIVerdict> {
-  const baseFacts = `Brand / Company: ${candidate.brand}
-Offer Title: ${candidate.offerTitle}
-Category: ${candidate.category}
-Redemption Method: ${candidate.redemptionMethod}
-Face Value: ${candidate.value} ${candidate.currency}
-Expiration Date: ${candidate.expiry}`;
+  const today = candidate.currentDate || todayISO();
 
-  // If no Gemini API key is configured yet in .env.local, return simulated high-accuracy heuristic
+  // If no Gemini API key is configured in environment, return heuristic check
   if (!GEMINI_API_KEY) {
     console.warn("GEMINI_API_KEY not configured. Running offline heuristic checks.");
-    return offlineHeuristicCheck(candidate);
+    return offlineHeuristicCheck(candidate, today);
   }
 
   try {
     const model = getGeminiModel("gemini-2.0-flash") || getGeminiModel("gemini-1.5-flash");
     if (!model) {
-      return offlineHeuristicCheck(candidate);
+      return offlineHeuristicCheck(candidate, today);
     }
 
     if (candidate.type === "photo" && candidate.imageDataUrl) {
-      const prompt = `You are Claim AI, an intelligent verification and OCR engine for a coupon, voucher, and gift card exchange platform.
-Look closely at the attached image of an uploaded claimable voucher or gift card.
+      const prompt = `You are the lead AI Auditor for "PassThePromo", a verified coupon, voucher, and gift card exchange.
+Today's Date: ${today}.
 
-YOUR TASKS:
-1. Examine if the photo actually shows a legible coupon code, gift card pin, barcode, QR code, or authentic promotional voucher details.
-2. If the photo is completely blank, blurry beyond recognition, completely unrelated (e.g. random pet photo), or obviously fabricated, mark valid as false.
-3. If authentic, extract and OCR any visible code or voucher identifier.
-4. Judge whether the brand, face value, and offer title are internally consistent and plausible.
+Analyze the attached voucher/coupon image with high scrutiny.
 
-CONTEXT:
-${baseFacts}
-${candidate.imageNote ? `Uploader's Note: ${candidate.imageNote}` : ""}
+YOUR INSTRUCTIONS:
+1. LEGIBILITY & AUTHENTICITY: Does this photo show a real, legible coupon, voucher, gift card, or promotional receipt? If it's a random photo (e.g. food, pet, selfie, screenshot of unrelated text), mark "valid": false.
+2. EXPIRATION AUDIT (CRITICAL):
+   - Search for any expiration date, "valid through", "expires", "valid until", or "use by" date printed on the image.
+   - If the date visible on the voucher is BEFORE ${today} (expired), you MUST set "valid": false with reason "Voucher photo shows an expired date ([DATE])".
+3. BRAND & OFFER EXTRACTION:
+   - Extract the exact Brand Name visible in the image.
+   - Extract the specific Offer Title (e.g. "$15 off order of $40", "20% off entire purchase", "Free beverage with sandwich").
+   - If the user provided a brand (${candidate.brand || "none provided"}) and it directly contradicts the image (e.g., image is Subway but user entered Starbucks), mark "valid": false with reason "Brand mismatch: image is for [Actual Brand], not ${candidate.brand}".
+4. DISCOUNT TYPE & VALUE:
+   - "amount": If a specific cash/dollar value discount or gift card amount is stated (e.g. $10, 500 INR, €15).
+   - "percent": If a percentage off is stated (e.g. 20% off, 50% off).
+   - "perk": If it is a complimentary service, buy-one-get-one, free trial, or free add-on with no fixed dollar or percentage amount.
+   - Extract the numeric value (for cash amount or percent number). If perk, value is 0.
+5. OCR IDENTIFIER:
+   - Extract any visible promo code, PIN, barcode number, or voucher code.
 
-Respond ONLY with a valid raw JSON object, without markdown code fences or conversational prose:
+Respond ONLY with a valid raw JSON object matching this schema without markdown fences:
 {
-  "valid": true or false,
-  "reason": "1 short sentence explaining your verdict",
-  "detected_code": "the exact promo code or voucher ID read from the image, or empty string if none"
+  "valid": true,
+  "reason": "Clear 1-sentence explanation of what was verified or why it was rejected",
+  "detected_brand": "Brand Name read from image",
+  "detected_offer": "Offer details read from image",
+  "detected_expiry": "YYYY-MM-DD or estimated future date if not explicitly printed",
+  "detected_discount_type": "amount" | "percent" | "perk",
+  "detected_value": number,
+  "detected_code": "Promo code or PIN read from image, or empty string"
 }`;
 
       const imagePart = {
@@ -87,27 +97,54 @@ Respond ONLY with a valid raw JSON object, without markdown code fences or conve
       const cleaned = responseText.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(cleaned);
 
+      // Extra safety: double-check expiry against today
+      if (parsed.detected_expiry && parsed.detected_expiry < today && parsed.valid) {
+        return {
+          valid: false,
+          reason: `Voucher expired on ${parsed.detected_expiry}. Expired coupons cannot be traded.`,
+          detectedCode: parsed.detected_code || "",
+          detectedBrand: parsed.detected_brand,
+          detectedOffer: parsed.detected_offer,
+          detectedExpiry: parsed.detected_expiry,
+          detectedDiscountType: parsed.detected_discount_type,
+          detectedValue: Number(parsed.detected_value) || 0,
+          source: "ai",
+        };
+      }
+
       return {
         valid: Boolean(parsed.valid),
-        reason: String(parsed.reason || "Photo verified by Claim AI vision.").slice(0, 240),
+        reason: String(parsed.reason || "Voucher photo verified by Gemini Vision AI.").slice(0, 260),
         detectedCode: parsed.detected_code ? String(parsed.detected_code).slice(0, 100) : "",
+        detectedBrand: parsed.detected_brand || candidate.brand || "",
+        detectedOffer: parsed.detected_offer || candidate.offerTitle || "",
+        detectedExpiry: parsed.detected_expiry || candidate.expiry || "",
+        detectedDiscountType: (parsed.detected_discount_type as DiscountType) || candidate.discountType || "amount",
+        detectedValue: Number(parsed.detected_value) || Number(candidate.value) || 0,
         source: "ai",
       };
     } else {
-      // Text code check
-      const prompt = `You are Claim AI, a verification auditor for a coupon and gift card exchange platform.
-Evaluate ONE user-submitted claimable details:
+      // Text Code Verification Prompt
+      const prompt = `You are the AI Verification Auditor for "PassThePromo" coupon exchange.
+Today's Date: ${today}.
 
-${baseFacts}
-Code: ${candidate.code || "N/A"}
+Evaluate this digital coupon/voucher submission:
+- Brand: ${candidate.brand || "Unknown"}
+- Offer: ${candidate.offerTitle || "Unknown"}
+- Discount Type: ${candidate.discountType || "amount"} (Value: ${candidate.value || 0}, Percent: ${candidate.percentOff || 0}%)
+- Expiration: ${candidate.expiry || "Unknown"}
+- Promo Code: ${candidate.code || "None"}
 
-YOUR TASK:
-Judge whether the brand, offer, category, value, and promo code look plausible and internally consistent for a genuine promotional offer (rather than keyboard mash, test dummy, or impossible value like $1,000,000 for a coffee shop). Do NOT worry about live merchant server redemption status.
+INSTRUCTIONS:
+1. Is this a plausible promo code (not keyboard mash like 'asdfasdf', '111111', 'fakecode')?
+2. Is the expiration date (${candidate.expiry}) on or after ${today}? If expired, mark valid: false.
+3. Is the discount and brand combination realistic?
 
-Respond ONLY with a valid raw JSON object, without markdown code fences:
+Respond ONLY with a valid raw JSON object matching this schema without markdown fences:
 {
-  "valid": true or false,
-  "reason": "1 short sentence explaining the verdict"
+  "valid": true,
+  "reason": "1 concise sentence explaining verification result",
+  "tier": 1 | 2 | 3
 }`;
 
       const result = await model.generateContent(prompt);
@@ -117,54 +154,63 @@ Respond ONLY with a valid raw JSON object, without markdown code fences:
 
       return {
         valid: Boolean(parsed.valid),
-        reason: String(parsed.reason || "Voucher details verified by Claim AI.").slice(0, 240),
+        reason: String(parsed.reason || "Promo code verified by Claim AI.").slice(0, 260),
+        tier: Number(parsed.tier) || 1,
+        detectedCode: candidate.code || "",
+        detectedBrand: candidate.brand || "",
+        detectedOffer: candidate.offerTitle || "",
+        detectedExpiry: candidate.expiry || "",
+        detectedDiscountType: candidate.discountType || "amount",
+        detectedValue: Number(candidate.value) || 0,
         source: "ai",
       };
     }
-  } catch (error) {
-    console.error("Gemini API call failed, falling back to heuristic validator:", error);
-    return offlineHeuristicCheck(candidate);
+  } catch (err: any) {
+    console.error("Gemini API error, falling back to heuristic:", err);
+    return offlineHeuristicCheck(candidate, today);
   }
 }
 
 /**
- * Offline heuristic check used when Gemini API key is missing or network is unavailable
+ * High-accuracy fallback when offline or API unreachable
  */
-function offlineHeuristicCheck(candidate: PlausibilityParams): ClaimAIVerdict {
-  const code = (candidate.code || "").trim();
-  const brand = (candidate.brand || "").trim().toLowerCase();
-  const value = Number(candidate.value) || 0;
-
-  // Basic sanity heuristics
-  if (value > 10000) {
+function offlineHeuristicCheck(candidate: PlausibilityParams, today: string): ClaimAIVerdict {
+  if (candidate.expiry && candidate.expiry < today) {
     return {
       valid: false,
-      reason: "Face value exceeds standard exchange threshold for automated approval.",
-      source: "rules",
+      reason: `Expiration date (${candidate.expiry}) is in the past.`,
+      source: "rules-fallback",
     };
   }
 
   if (candidate.type === "code") {
-    // Check for keyboard mashing e.g. "asdfasdf" or "111111"
-    if (/^(.)\1{4,}$/.test(code) || /^(test|fake|asdf|qwerty)/i.test(code)) {
+    const code = (candidate.code || "").trim();
+    if (code.length < 3) {
       return {
         valid: false,
-        reason: "Code pattern resembles a test string or placeholder.",
-        source: "rules",
+        reason: "Coupon code is too short to be plausible.",
+        source: "rules-fallback",
       };
     }
-    return {
-      valid: true,
-      reason: `Verified — ${candidate.brand} ${candidate.offerTitle} looks consistent and is now live on the exchange.`,
-      source: "rules-fallback",
-    };
-  } else {
-    // Photo fallback
-    return {
-      valid: true,
-      reason: "Photo upload accepted and queued on the exchange.",
-      detectedCode: "OCR_SCANNED",
-      source: "rules-fallback",
-    };
+    const isObviousSpam = /^(.)\1+$/.test(code) || /^(1234|asdf|qwerty|test)/i.test(code);
+    if (isObviousSpam) {
+      return {
+        valid: false,
+        reason: "Code appears to be test data or keyboard mash.",
+        source: "rules-fallback",
+      };
+    }
   }
+
+  return {
+    valid: true,
+    reason: "Passed algorithmic verification checks.",
+    detectedCode: candidate.code || "",
+    detectedBrand: candidate.brand || "",
+    detectedOffer: candidate.offerTitle || "",
+    detectedExpiry: candidate.expiry || "",
+    detectedDiscountType: candidate.discountType || "amount",
+    detectedValue: Number(candidate.value) || 0,
+    source: "rules-fallback",
+  };
 }

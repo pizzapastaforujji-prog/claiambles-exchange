@@ -9,13 +9,7 @@ import {
   ShieldCheck,
   Zap,
   Lock,
-  Clock,
-  CheckCircle2,
-  FileText,
-  Camera,
   Coins,
-  Ticket,
-  TrendingUp,
 } from "lucide-react";
 
 export default function HomePage() {
@@ -41,7 +35,7 @@ export default function HomePage() {
             style={{ marginBottom: 14 }}
           >
             <Sparkles style={{ width: 13, height: 13 }} />
-            Zero-Waste Coupon & Voucher Exchange
+            Zero-Waste Promo & Voucher Exchange
           </div>
 
           <h1
@@ -55,7 +49,7 @@ export default function HomePage() {
               marginBottom: 16,
             }}
           >
-            Your unused coupon is someone else&apos;s win.
+            Pass the promo. Don&apos;t let great deals expire.
           </h1>
 
           <p
@@ -66,18 +60,18 @@ export default function HomePage() {
               marginBottom: 26,
             }}
           >
-            Trade gift cards, discount codes, and vouchers you&apos;ll never use.
-            Powered by <strong>Google Gemini Claim AI</strong> for real-time verification,
+            Trade gift cards, discount codes, percentage vouchers, and complimentary perks you&apos;ll never use.
+            Powered by <strong>Google Gemini Vision AI</strong> for deep photo inspection and fraud detection,
             protecting peers with fair upfront points and escrow security.
           </p>
 
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <Link href="/upload" className="btn primary large">
-              Upload a Claimable
+              Pass a Promo
               <ArrowRight style={{ width: 16, height: 16 }} />
             </Link>
             <Link href="/browse" className="btn secondary large">
-              Browse Marketplace
+              Explore Marketplace
             </Link>
           </div>
         </div>
@@ -92,7 +86,7 @@ export default function HomePage() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-            <span className="label" style={{ marginBottom: 0 }}>Live on Exchange</span>
+            <span className="label" style={{ marginBottom: 0 }}>Live on PassThePromo</span>
             <span className="pill brand" style={{ fontSize: 11, padding: "2px 7px" }}>
               Active
             </span>
@@ -113,7 +107,7 @@ export default function HomePage() {
           </div>
 
           <div style={{ fontSize: 13, color: "var(--ink-muted)", marginBottom: 18 }}>
-            verified claimables available right now
+            verified vouchers available right now
           </div>
 
           <div className="dashed-line" />
@@ -168,7 +162,7 @@ export default function HomePage() {
               Real Accounts & Trust
             </h3>
             <p style={{ fontSize: 13, color: "var(--ink-muted)", lineHeight: 1.5 }}>
-              Users earn credit score (0–100) based on authenticity. Trusted uploaders unlock higher reward multipliers.
+              Users earn trust score (0–100) based on authenticity. Trusted uploaders unlock higher reward multipliers.
             </p>
           </div>
 
@@ -237,10 +231,10 @@ export default function HomePage() {
               <Zap style={{ width: 18, height: 18 }} />
             </div>
             <h3 style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 700, marginBottom: 6 }}>
-              Gemini Claim AI
+              Gemini Vision AI
             </h3>
             <p style={{ fontSize: 13, color: "var(--ink-muted)", lineHeight: 1.5 }}>
-              Google Gemini 2.0 Flash inspects voucher photos, extracts OCR barcodes, and prevents duplicate or expired submissions.
+              Google Gemini 2.0 Flash inspects voucher photos, auto-extracts brand & dates, and strictly catches expired or mismatching submissions.
             </p>
           </div>
         </div>
@@ -253,7 +247,7 @@ export default function HomePage() {
             Getting Started
           </div>
           <h2 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em" }}>
-            How to Upload a Claimable
+            How to Pass a Promo
           </h2>
         </div>
 
@@ -272,7 +266,7 @@ export default function HomePage() {
               Choose a Type
             </h4>
             <p style={{ fontSize: 12.5, color: "var(--ink-muted)", lineHeight: 1.45 }}>
-              Select <strong>Text Code</strong> for digital promo codes or <strong>Photo</strong> for physical vouchers & receipts.
+              Select <strong>Text Code</strong> for digital promo codes or <strong>Voucher Photo</strong> for physical receipts & barcode cards.
             </p>
           </div>
 
@@ -281,10 +275,10 @@ export default function HomePage() {
               STEP 2
             </div>
             <h4 style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
-              Fill in Details
+              Discount Format
             </h4>
             <p style={{ fontSize: 12.5, color: "var(--ink-muted)", lineHeight: 1.45 }}>
-              Specify brand, offer title, category, redemption method, currency, face value, and expiration date.
+              Choose between <strong>Cash $ Value</strong>, <strong>Percentage % Off</strong>, or <strong>Free Perk / Service</strong>.
             </p>
           </div>
 
@@ -293,10 +287,10 @@ export default function HomePage() {
               STEP 3
             </div>
             <h4 style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
-              Attach Photo
+              AI Vision Auto-Extract
             </h4>
             <p style={{ fontSize: 12.5, color: "var(--ink-muted)", lineHeight: 1.45 }}>
-              Claim AI scans and extracts voucher text with vision OCR while keeping the raw photo safely blurred until availed.
+              Attach your photo and let Gemini AI automatically read the brand, expiry, and offer without tedious typing.
             </p>
           </div>
 
@@ -305,10 +299,10 @@ export default function HomePage() {
               STEP 4
             </div>
             <h4 style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
-              Instant AI Approval
+              Instant Points
             </h4>
             <p style={{ fontSize: 12.5, color: "var(--ink-muted)", lineHeight: 1.45 }}>
-              Deterministic checks run in milliseconds followed by Gemini AI plausibility review. You receive upfront points instantly!
+              Receive 25% upfront points immediately upon approval. The rest transfers once redeemed and verified!
             </p>
           </div>
         </div>

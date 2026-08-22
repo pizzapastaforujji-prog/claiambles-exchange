@@ -11,6 +11,8 @@ export type RedemptionMethod = "Online" | "In-store" | "Both";
 
 export type ClaimableType = "code" | "photo";
 
+export type DiscountType = "amount" | "percent" | "perk";
+
 export type ClaimableStatus =
   | "valid"
   | "pending_confirmation"
@@ -35,6 +37,7 @@ export interface Claimable {
   uploader: string; // Email or user ID
   uploader_id?: string;
   type: ClaimableType;
+  discountType?: DiscountType; // "amount" | "percent" | "perk"
   brand: string;
   offerTitle: string;
   code?: string;
@@ -45,7 +48,8 @@ export interface Claimable {
   category: Category;
   redemptionMethod: RedemptionMethod;
   currency: CurrencyCode;
-  value: number;
+  value: number; // Cash face value (if amount) or percent number (if percent) or 0 (if perk)
+  percentOff?: number;
   expiry: string; // ISO date YYYY-MM-DD
   status: ClaimableStatus;
   points_total: number;
@@ -88,5 +92,10 @@ export interface ClaimAIVerdict {
   reason: string;
   tier?: number;
   detectedCode?: string;
+  detectedBrand?: string;
+  detectedOffer?: string;
+  detectedExpiry?: string;
+  detectedDiscountType?: DiscountType;
+  detectedValue?: number;
   source: "rules" | "ai" | "rules-fallback";
 }

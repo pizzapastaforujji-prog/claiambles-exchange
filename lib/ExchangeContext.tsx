@@ -1,12 +1,19 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { ExchangeState, Claimable, UserProfile, ClaimAIVerdict } from "./types";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import { ExchangeState, Claimable, UserProfile, ClaimAIVerdict, DiscountType } from "./types";
 import {
   loadExchangeState,
   saveExchangeState,
+  upsertProfile,
+  updateProfileStats,
+  insertClaimable,
+  updateClaimableStatus,
+  deleteClaimable,
+  insertRedemption,
   INITIAL_CLEAN_STATE,
   supabase,
+  isSupabaseConfigured,
 } from "./supabaseClient";
 import {
   todayISO,
@@ -15,9 +22,16 @@ import {
   disputeClaimable,
   sweepStatuses,
   CONFIRM_WINDOW_DAYS,
+  MAX_DAILY_UPLOADS,
   totalPointsFor,
   splitPoints,
+  hardValidate,
 } from "./claimRules";
+
+const MASTER_EMAIL = "ujjwalsha2009@gmail.com";
+const MASTER_PASSWORD = "Admin@Claim2026!";
+const SESSION_KEY = "passtpromo_session_v7";
+const POLL_INTERVAL = 12_000; // 12 seconds auto-sync
 
 interface ExchangeContextType {
   state: ExchangeState;
@@ -33,13 +47,14 @@ interface ExchangeContextType {
   addClaimable: (
     candidate: Partial<Claimable>,
     verdict: ClaimAIVerdict
-  ) => Promise<{ success: boolean; upfront: number; final: number }>;
+  ) => Promise<{ success: boolean; upfront: number; final: number; reason?: string }>;
   redeemClaimable: (claimableId: string) => Promise<{ success: boolean; message: string }>;
   confirmRedemption: (claimableId: string) => Promise<void>;
   disputeRedemption: (claimableId: string, reason: string) => Promise<void>;
   adminApproveClaimable: (claimableId: string) => Promise<void>;
   adminRejectClaimable: (claimableId: string) => Promise<void>;
   adminDeleteClaimable: (claimableId: string) => Promise<void>;
+  refreshFromCloud: () => Promise<void>;
 }
 
 const ExchangeContext = createContext<ExchangeContextType | undefined>(undefined);
@@ -49,6 +64,7 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const flash = useCallback((msg: string) => {
     setToast(msg);
@@ -57,24 +73,32 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
     }, 3500);
   }, []);
 
-  // Load state and perform sweep
+  const refreshFromCloud = useCallback(async () => {
+    try {
+      const loaded = await loadExchangeState();
+      const { data: swept } = sweepStatuses(loaded);
+      setState(swept);
+      await saveExchangeState(swept);
+    } catch (e) {
+      console.warn("Cloud refresh failed:", e);
+    }
+  }, []);
+
   useEffect(() => {
     async function init() {
       try {
         const loaded = await loadExchangeState();
         const { data: swept } = sweepStatuses(loaded);
         setState(swept);
-        await saveExchangeState(swept);
 
-        // Restore user session only if the user explicitly logged in previously
-        const savedSession = localStorage.getItem("claim_exchange_session");
-        if (savedSession && swept.users[savedSession]) {
+        const savedSession = localStorage.getItem(SESSION_KEY);
+        if (savedSession && (savedSession === MASTER_EMAIL || swept.users[savedSession])) {
           setSessionEmail(savedSession);
         } else {
           setSessionEmail(null);
         }
       } catch (e) {
-        console.error("Init exchange state error:", e);
+        console.error("Init error:", e);
       } finally {
         setLoading(false);
       }
@@ -82,79 +106,126 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
     init();
   }, []);
 
-  // Helper to persist state updates
-  const updateState = useCallback(async (nextState: ExchangeState) => {
-    setState(nextState);
-    await saveExchangeState(nextState);
+  // Background sync every 12 seconds across all devices
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const loaded = await loadExchangeState();
+        const { data: swept } = sweepStatuses(loaded);
+        setState(swept);
+      } catch {}
+    }, POLL_INTERVAL);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
+  // ─── Login ────────────────────────────────────────────────────────────────
   const login = async (email: string, password?: string): Promise<{ success: boolean; message?: string }> => {
     const clean = email.trim().toLowerCase();
-    if (!clean) {
-      return { success: false, message: "Please enter your email address." };
-    }
-    if (!password) {
-      return { success: false, message: "Please enter your password." };
-    }
+    if (!clean) return { success: false, message: "Please enter your email address." };
+    if (!password) return { success: false, message: "Please enter your password." };
 
-    // Master Admin check
-    if (clean === "ujjwalsha2009@gmail.com") {
-      if (password !== "Admin@Claim2026!") {
-        return { success: false, message: "Incorrect master password. Master admin requires 'Admin@Claim2026!'." };
+    // Master admin authentication (DO NOT LEAK PASSWORD)
+    if (clean === MASTER_EMAIL) {
+      if (password !== MASTER_PASSWORD) {
+        return { success: false, message: "Incorrect password. Please try again." };
       }
-      const adminProfile: UserProfile = state.users[clean] || {
-        email: clean,
-        password: "Admin@Claim2026!",
-        credit_score: 100,
-        points: 100,
-        preferred_currency: "USD",
-        joined: "2026-08-01",
-        role: "admin" as const,
-      };
-      const nextUsers: Record<string, UserProfile> = {
-        ...state.users,
-        [clean]: { ...adminProfile, role: "admin" as const, password: "Admin@Claim2026!" },
-      };
-      await updateState({ ...state, users: nextUsers });
       setSessionEmail(clean);
-      localStorage.setItem("claim_exchange_session", clean);
-      flash(`Welcome back, Master Admin!`);
+      localStorage.setItem(SESSION_KEY, clean);
+      flash("Welcome back, Master Admin!");
       return { success: true };
     }
 
+    // Direct database verification
+    if (supabase) {
+      try {
+        const { data: profile, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("email", clean)
+          .single();
+
+        if (error || !profile) {
+          return { success: false, message: "No account found with this email. Please sign up first." };
+        }
+
+        const storedPassword = profile.password_hash || profile.password;
+        if (storedPassword && storedPassword !== password) {
+          return { success: false, message: "Incorrect password. Please verify and try again." };
+        }
+
+        const userProfile: UserProfile = {
+          id: profile.id,
+          email: profile.email,
+          password: storedPassword,
+          credit_score: profile.credit_score ?? 50,
+          points: profile.points ?? 20,
+          preferred_currency: profile.preferred_currency || "USD",
+          joined: profile.created_at ? profile.created_at.slice(0, 10) : todayISO(),
+          role: profile.role || "user",
+        };
+
+        setState((prev) => ({
+          ...prev,
+          users: { ...prev.users, [clean]: userProfile },
+        }));
+
+        setSessionEmail(clean);
+        localStorage.setItem(SESSION_KEY, clean);
+        flash(`Welcome back, ${clean}!`);
+        return { success: true };
+      } catch (e) {
+        console.warn("Supabase login lookup failed:", e);
+      }
+    }
+
+    // Local fallback check
     const existing = state.users[clean];
     if (!existing) {
-      return { success: false, message: "No account found with this email. Please switch to 'Sign Up' first." };
+      return { success: false, message: "No account found. Please sign up first." };
     }
-
     if (existing.password && existing.password !== password) {
-      return { success: false, message: "Incorrect password. Please verify and try again." };
-    }
-
-    // If existing account didn't have password set previously, attach it now
-    if (!existing.password && password) {
-      existing.password = password;
-      const nextUsers = { ...state.users, [clean]: existing };
-      await updateState({ ...state, users: nextUsers });
+      return { success: false, message: "Incorrect password. Please try again." };
     }
 
     setSessionEmail(clean);
-    localStorage.setItem("claim_exchange_session", clean);
+    localStorage.setItem(SESSION_KEY, clean);
     flash(`Welcome back, ${clean}!`);
     return { success: true };
   };
 
+  // ─── Signup ───────────────────────────────────────────────────────────────
   const signup = async (email: string, password?: string): Promise<{ success: boolean; message?: string }> => {
     const clean = email.trim().toLowerCase();
-    if (!clean) {
-      return { success: false, message: "Please enter a valid email address." };
-    }
+    if (!clean) return { success: false, message: "Please enter a valid email address." };
     if (!password || password.length < 4) {
       return { success: false, message: "Password must be at least 4 characters long." };
     }
 
-    if (clean === "ujjwalsha2009@gmail.com" || state.users[clean]) {
-      return { success: false, message: "An account already exists with this email. Please switch to 'Log In'." };
+    if (clean === MASTER_EMAIL) {
+      return { success: false, message: "This admin account is already registered. Please log in." };
+    }
+
+    if (supabase) {
+      try {
+        const { data: existing } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("email", clean)
+          .single();
+
+        if (existing) {
+          return { success: false, message: "An account already exists with this email. Please log in." };
+        }
+      } catch {}
+    } else {
+      if (state.users[clean]) {
+        return { success: false, message: "An account already exists with this email. Please log in." };
+      }
     }
 
     const newProfile: UserProfile = {
@@ -167,31 +238,35 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       role: "user",
     };
 
-    const nextUsers = { ...state.users, [clean]: newProfile };
     if (supabase) {
       try {
-        await supabase.from("profiles").upsert({
+        await supabase.from("profiles").insert({
           email: clean,
+          password_hash: password,
           credit_score: 50,
           points: 20,
           preferred_currency: "USD",
           role: "user",
         });
       } catch (e) {
-        console.warn("Supabase profile upsert:", e);
+        console.warn("Signup Supabase error:", e);
       }
     }
 
-    await updateState({ ...state, users: nextUsers });
+    setState((prev) => ({
+      ...prev,
+      users: { ...prev.users, [clean]: newProfile },
+    }));
+
     setSessionEmail(clean);
-    localStorage.setItem("claim_exchange_session", clean);
+    localStorage.setItem(SESSION_KEY, clean);
     flash("Account created! +20 welcome bonus points added.");
     return { success: true };
   };
 
   const logout = () => {
     setSessionEmail(null);
-    localStorage.removeItem("claim_exchange_session");
+    localStorage.removeItem(SESSION_KEY);
     flash("Signed out successfully.");
   };
 
@@ -212,10 +287,12 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {}
     }
 
-    await updateState({ ...state, users: nextUsers });
+    setState({ ...state, users: nextUsers });
+    await saveExchangeState({ ...state, users: nextUsers });
     flash(`Preferred currency set to ${currency}.`);
   };
 
+  // ─── Add Claimable ────────────────────────────────────────────────────────
   const addClaimable = async (
     candidate: Partial<Claimable>,
     verdict: ClaimAIVerdict
@@ -227,29 +304,45 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
 
     const user = state.users[sessionEmail];
 
-    if (!verdict.valid) {
-      // Credit score penalty for submitting invalid/gibberish coupon
-      const nextUsers = {
-        ...state.users,
-        [sessionEmail]: {
-          ...user,
-          credit_score: Math.max(0, user.credit_score - 5),
-        },
-      };
-      await updateState({ ...state, users: nextUsers });
-      flash("Claim AI flagged this claimable as invalid. Credit score decreased slightly (-5).");
-      return { success: false, upfront: 0, final: 0 };
+    // Check hard validation + 10/day limit
+    const hardCheck = hardValidate({ ...candidate, uploader: sessionEmail }, state.claimables);
+    if (hardCheck.fail) {
+      flash(hardCheck.reason || "Validation failed.");
+      return { success: false, upfront: 0, final: 0, reason: hardCheck.reason };
     }
 
-    const total = totalPointsFor(verdict.tier || 1, user.credit_score);
+    if (!verdict.valid) {
+      const nextCreditScore = Math.max(0, user.credit_score - 5);
+      if (supabase) {
+        try {
+          await supabase
+            .from("profiles")
+            .update({ credit_score: nextCreditScore })
+            .eq("email", sessionEmail);
+        } catch {}
+      }
+      setState((prev) => ({
+        ...prev,
+        users: {
+          ...prev.users,
+          [sessionEmail]: { ...user, credit_score: nextCreditScore },
+        },
+      }));
+      flash(`Claim AI flagged this claimable: ${verdict.reason}`);
+      return { success: false, upfront: 0, final: 0, reason: verdict.reason };
+    }
+
+    const discountType: DiscountType = verdict.detectedDiscountType || candidate.discountType || "amount";
+    const total = totalPointsFor(verdict.tier || 1, user.credit_score, discountType);
     const { upfront, final } = splitPoints(total);
 
     const newClaimable: Claimable = {
       id: "cl-" + Math.random().toString(36).substring(2, 9),
       uploader: sessionEmail,
       type: candidate.type || "code",
-      brand: (candidate.brand || "").trim(),
-      offerTitle: (candidate.offerTitle || "").trim(),
+      discountType,
+      brand: (verdict.detectedBrand || candidate.brand || "").trim(),
+      offerTitle: (verdict.detectedOffer || candidate.offerTitle || "").trim(),
       code: candidate.type === "code" ? (candidate.code || "").trim() : undefined,
       imageDataUrl: candidate.type === "photo" ? candidate.imageDataUrl : null,
       imageMediaType: candidate.type === "photo" ? candidate.imageMediaType : null,
@@ -257,8 +350,9 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       category: candidate.category || "Food & Drink",
       redemptionMethod: candidate.redemptionMethod || "Online",
       currency: candidate.currency || user.preferred_currency || "USD",
-      value: Number(candidate.value) || 10,
-      expiry: candidate.expiry || addDays(todayISO(), 7),
+      value: verdict.detectedValue !== undefined ? Number(verdict.detectedValue) : Number(candidate.value) || 0,
+      percentOff: candidate.percentOff ? Number(candidate.percentOff) : undefined,
+      expiry: verdict.detectedExpiry || candidate.expiry || addDays(todayISO(), 7),
       status: "valid",
       points_total: total,
       points_upfront: upfront,
@@ -268,62 +362,29 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       ai_detected_code: verdict.detectedCode || "",
     };
 
-    // Insert into live Supabase if connected
-    if (supabase) {
-      try {
-        await supabase.from("claimables").insert({
-          type: newClaimable.type,
-          brand: newClaimable.brand,
-          offer_title: newClaimable.offerTitle,
-          code: newClaimable.code,
-          image_data_base64: newClaimable.imageDataUrl,
-          image_media_type: newClaimable.imageMediaType,
-          image_note: newClaimable.imageNote,
-          category: newClaimable.category,
-          redemption_method: newClaimable.redemptionMethod,
-          currency: newClaimable.currency,
-          face_value: newClaimable.value,
-          expiry_date: newClaimable.expiry,
-          status: "valid",
-          points_total: total,
-          points_upfront: upfront,
-          points_final: final,
-          ai_reason: newClaimable.ai_reason,
-          ai_detected_code: newClaimable.ai_detected_code,
-        });
-
-        await supabase
-          .from("profiles")
-          .update({
-            points: user.points + upfront,
-            credit_score: Math.min(100, user.credit_score + 5),
-          })
-          .eq("email", sessionEmail);
-      } catch (e) {
-        console.warn("Supabase insert claimable:", e);
-      }
+    const supabaseId = await insertClaimable(newClaimable);
+    if (supabaseId) {
+      newClaimable.id = supabaseId;
     }
 
-    const nextUsers = {
-      ...state.users,
-      [sessionEmail]: {
-        ...user,
-        points: user.points + upfront,
-        credit_score: Math.min(100, user.credit_score + 5),
-      },
-    };
+    const nextPoints = user.points + upfront;
+    const nextCreditScore = Math.min(100, user.credit_score + 5);
+    await updateProfileStats(sessionEmail, nextPoints, nextCreditScore);
 
-    const nextClaimables = [newClaimable, ...state.claimables];
-    await updateState({
-      ...state,
-      users: nextUsers,
-      claimables: nextClaimables,
-    });
+    setState((prev) => ({
+      ...prev,
+      users: {
+        ...prev.users,
+        [sessionEmail]: { ...user, points: nextPoints, credit_score: nextCreditScore },
+      },
+      claimables: [newClaimable, ...prev.claimables],
+    }));
 
     flash(`Approved! Earned +${upfront} pts upfront (+${final} pts upon confirmation).`);
     return { success: true, upfront, final };
   };
 
+  // ─── Redeem Claimable ─────────────────────────────────────────────────────
   const redeemClaimable = async (claimableId: string) => {
     if (!sessionEmail || !state.users[sessionEmail]) {
       return { success: false, message: "Please log in first." };
@@ -337,10 +398,9 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (claimable.uploader === sessionEmail) {
-      return { success: false, message: "You cannot redeem your own uploaded claimable." };
+      return { success: false, message: "You cannot redeem your own claimable." };
     }
 
-    // Daily limit check: 1 redemption per day per account
     const today = todayISO();
     const alreadyRedeemedToday = state.redemptions.some((r) => {
       if (r.redeemed_by !== sessionEmail || r.redeemed_at !== today) return false;
@@ -349,136 +409,115 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (alreadyRedeemedToday) {
-      return {
-        success: false,
-        message: "Daily limit reached: You can redeem 1 claimable per day.",
-      };
+      return { success: false, message: "Daily limit reached: You can redeem 1 claimable per day." };
     }
 
     const cost = claimable.points_total;
     if (user.points < cost) {
-      return {
-        success: false,
-        message: `Insufficient points (${user.points} available, ${cost} required).`,
-      };
+      return { success: false, message: `Insufficient points (${user.points} available, ${cost} required).` };
     }
 
-    const nextClaimables = state.claimables.map((c) =>
-      c.id === claimableId
-        ? {
-            ...c,
-            status: "pending_confirmation" as const,
-            redeemed_by: sessionEmail,
-            redeemed_at: today,
-            confirm_by: addDays(today, CONFIRM_WINDOW_DAYS),
-          }
-        : c
-    );
+    const confirmBy = addDays(today, CONFIRM_WINDOW_DAYS);
 
-    const nextUsers = {
-      ...state.users,
-      [sessionEmail]: {
-        ...user,
-        points: user.points - cost,
-      },
-    };
-
-    const nextRedemptions = [
-      ...state.redemptions,
-      {
-        claimable_id: claimableId,
-        redeemed_by: sessionEmail,
-        redeemed_at: today,
-        points_spent: cost,
-      },
-    ];
-
-    if (supabase) {
-      try {
-        await supabase
-          .from("claimables")
-          .update({
-            status: "pending_confirmation",
-            redeemed_at: today,
-            confirm_by: addDays(today, CONFIRM_WINDOW_DAYS),
-          })
-          .eq("id", claimableId);
-
-        await supabase
-          .from("profiles")
-          .update({ points: user.points - cost })
-          .eq("email", sessionEmail);
-      } catch (e) {}
-    }
-
-    await updateState({
-      ...state,
-      users: nextUsers,
-      claimables: nextClaimables,
-      redemptions: nextRedemptions,
+    await updateClaimableStatus(claimableId, {
+      status: "pending_confirmation",
+      redeemed_by: sessionEmail,
+      redeemed_at: today,
+      confirm_by: confirmBy,
     });
 
-    flash(`Redeemed for ${cost} pts! The code is now unmasked on your Dashboard.`);
+    const nextPoints = user.points - cost;
+    await updateProfileStats(sessionEmail, nextPoints, user.credit_score);
+    await insertRedemption(claimableId, sessionEmail, today, cost);
+
+    setState((prev) => ({
+      ...prev,
+      users: {
+        ...prev.users,
+        [sessionEmail]: { ...user, points: nextPoints },
+      },
+      claimables: prev.claimables.map((c) =>
+        c.id === claimableId
+          ? { ...c, status: "pending_confirmation" as const, redeemed_by: sessionEmail, redeemed_at: today, confirm_by: confirmBy }
+          : c
+      ),
+      redemptions: [
+        ...prev.redemptions,
+        { claimable_id: claimableId, redeemed_by: sessionEmail, redeemed_at: today, points_spent: cost },
+      ],
+    }));
+
+    flash(`Redeemed for ${cost} pts! Code revealed on your Dashboard.`);
     return { success: true, message: "Success" };
   };
 
   const confirmRedemption = async (claimableId: string) => {
     const nextState = confirmClaimable(state, claimableId);
-    if (supabase) {
-      try {
-        await supabase
-          .from("claimables")
-          .update({ status: "confirmed" })
-          .eq("id", claimableId);
-      } catch (e) {}
+    await updateClaimableStatus(claimableId, { status: "confirmed" });
+
+    const claimable = state.claimables.find((c) => c.id === claimableId);
+    if (claimable) {
+      const uploader = nextState.users[claimable.uploader];
+      if (uploader) {
+        await updateProfileStats(claimable.uploader, uploader.points, uploader.credit_score);
+      }
     }
-    await updateState(nextState);
-    flash("Confirmed! Remaining points released to uploader and credit scores boosted.");
+
+    setState(nextState);
+    await saveExchangeState(nextState);
+    flash("Confirmed! Remaining points released to uploader and trust score boosted.");
   };
 
   const disputeRedemption = async (claimableId: string, reason: string) => {
     const nextState = disputeClaimable(state, claimableId, reason);
-    if (supabase) {
-      try {
-        await supabase
-          .from("claimables")
-          .update({ status: "disputed", dispute_reason: reason })
-          .eq("id", claimableId);
-      } catch (e) {}
+    await updateClaimableStatus(claimableId, { status: "disputed", dispute_reason: reason });
+
+    const claimable = state.claimables.find((c) => c.id === claimableId);
+    if (claimable?.redeemed_by) {
+      const redeemer = nextState.users[claimable.redeemed_by];
+      if (redeemer) {
+        await updateProfileStats(claimable.redeemed_by, redeemer.points, redeemer.credit_score);
+      }
     }
-    await updateState(nextState);
-    flash("Reported. Full points refunded to your balance; uploader penalized.");
+
+    setState(nextState);
+    await saveExchangeState(nextState);
+    flash("Reported. Full points refunded; dishonest uploader penalized.");
   };
 
   const adminApproveClaimable = async (claimableId: string) => {
-    const nextClaimables = state.claimables.map((c) =>
-      c.id === claimableId ? { ...c, status: "valid" as const } : c
-    );
-    await updateState({ ...state, claimables: nextClaimables });
-    flash("Claimable approved by Admin and is now live on the exchange.");
+    await updateClaimableStatus(claimableId, { status: "valid" });
+    setState((prev) => ({
+      ...prev,
+      claimables: prev.claimables.map((c) =>
+        c.id === claimableId ? { ...c, status: "valid" as const } : c
+      ),
+    }));
+    flash("Claimable approved and is now live on PassThePromo.");
   };
 
   const adminRejectClaimable = async (claimableId: string) => {
-    const nextClaimables = state.claimables.map((c) =>
-      c.id === claimableId ? { ...c, status: "disputed" as const } : c
-    );
-    await updateState({ ...state, claimables: nextClaimables });
+    await updateClaimableStatus(claimableId, { status: "disputed" });
+    setState((prev) => ({
+      ...prev,
+      claimables: prev.claimables.map((c) =>
+        c.id === claimableId ? { ...c, status: "disputed" as const } : c
+      ),
+    }));
     flash("Claimable rejected by Admin.");
   };
 
   const adminDeleteClaimable = async (claimableId: string) => {
-    const nextClaimables = state.claimables.filter((c) => c.id !== claimableId);
-    const nextRedemptions = state.redemptions.filter((r) => r.claimable_id !== claimableId);
-    if (supabase) {
-      try {
-        await supabase.from("claimables").delete().eq("id", claimableId);
-      } catch (e) {}
-    }
-    await updateState({ ...state, claimables: nextClaimables, redemptions: nextRedemptions });
+    await deleteClaimable(claimableId);
+    setState((prev) => ({
+      ...prev,
+      claimables: prev.claimables.filter((c) => c.id !== claimableId),
+      redemptions: prev.redemptions.filter((r) => r.claimable_id !== claimableId),
+    }));
     flash("Claimable permanently deleted.");
   };
 
-  const currentUser = sessionEmail ? state.users[sessionEmail] || null : null;
+  const currentUser = sessionEmail ? state.users[sessionEmail] ?? null : null;
 
   return (
     <ExchangeContext.Provider
@@ -500,6 +539,7 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
         adminApproveClaimable,
         adminRejectClaimable,
         adminDeleteClaimable,
+        refreshFromCloud,
       }}
     >
       {children}

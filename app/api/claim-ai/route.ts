@@ -1,25 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runGeminiPlausibilityCheck, PlausibilityParams } from "@/lib/gemini";
-import { toUSD, tierFor, totalPointsFor, splitPoints } from "@/lib/claimRules";
+import { toUSD, tierFor, totalPointsFor, splitPoints, todayISO } from "@/lib/claimRules";
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as PlausibilityParams & { creditScore?: number };
 
-    if (!body.brand || !body.offerTitle || !body.value || !body.expiry) {
+    // For photo uploads, brand & offer can be auto-extracted by Gemini Vision
+    if (body.type === "code" && (!body.brand || !body.offerTitle || !body.expiry)) {
       return NextResponse.json(
-        { valid: false, reason: "Missing required claimable fields." },
+        { valid: false, reason: "Please fill in the brand, offer description, and expiration date." },
         { status: 400 }
       );
     }
 
-    // Call Google Gemini Plausibility & Vision OCR
-    const verdict = await runGeminiPlausibilityCheck(body);
+    if (body.type === "photo" && !body.imageDataUrl) {
+      return NextResponse.json(
+        { valid: false, reason: "Please attach a clear photo of the voucher." },
+        { status: 400 }
+      );
+    }
 
-    const valueUSD = toUSD(body.value, (body.currency as any) || "USD");
-    const tier = tierFor(valueUSD);
+    // Call Google Gemini 2.0 Flash with strict vision analysis
+    const verdict = await runGeminiPlausibilityCheck({
+      ...body,
+      currentDate: todayISO(),
+    });
+
+    const discountType = verdict.detectedDiscountType || body.discountType || "amount";
+    const valueNum = verdict.detectedValue || Number(body.value) || 0;
+    const valueUSD = toUSD(valueNum, (body.currency as any) || "USD");
+    const tier = tierFor(valueUSD, discountType, body.percentOff ? Number(body.percentOff) : undefined);
     const creditScore = body.creditScore || 50;
-    const totalPoints = totalPointsFor(tier, creditScore);
+    const totalPoints = totalPointsFor(tier, creditScore, discountType);
     const { upfront, final } = splitPoints(totalPoints);
 
     return NextResponse.json({

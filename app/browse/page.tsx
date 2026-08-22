@@ -8,20 +8,16 @@ import {
   CURRENCIES,
   REDEMPTION_METHODS,
   daysUntil,
-  formatMoney,
+  formatDiscount,
   toUSD,
   todayISO,
 } from "@/lib/claimRules";
 import {
   Search,
-  Filter,
   Lock,
   Clock,
   Sparkles,
-  ArrowRight,
-  ShoppingBag,
-  Coins,
-  Ticket,
+  Percent,
 } from "lucide-react";
 
 export default function BrowsePage() {
@@ -109,68 +105,63 @@ export default function BrowsePage() {
               marginBottom: 4,
             }}
           >
-            Browse Claimables
+            Explore Marketplace
           </h2>
           <p style={{ color: "var(--ink-muted)", fontSize: 13.5 }}>
-            {currentUser ? (
-              <>
-                Available Balance: <strong>{currentUser.points} pts</strong>.{" "}
-                {alreadyRedeemedToday ? (
-                  <span style={{ color: "var(--alert)", fontWeight: 600 }}>
-                    (Daily limit: 1 redemption used today)
-                  </span>
-                ) : (
-                  <span style={{ color: "var(--brand)", fontWeight: 600 }}>
-                    (1 redemption slot ready today)
-                  </span>
-                )}
-              </>
-            ) : (
-              "Explore vouchers and discount codes shared by real members."
-            )}
+            Browse active promo codes, gift cards, and vouchers passed by the community.
           </p>
         </div>
 
-        <Link href="/upload" className="btn primary small">
-          + Upload Voucher
-        </Link>
+        {currentUser && (
+          <div
+            style={{
+              background: "var(--canvas)",
+              padding: "6px 12px",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)",
+              fontSize: 12.5,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span>Daily Redemption:</span>
+            <strong style={{ color: alreadyRedeemedToday ? "var(--alert)" : "var(--brand)" }}>
+              {alreadyRedeemedToday ? "1 / 1 used today" : "0 / 1 used today (Available)"}
+            </strong>
+          </div>
+        )}
       </div>
 
-      {/* Search Bar */}
-      <div style={{ position: "relative", marginBottom: 12 }}>
-        <Search
-          style={{
-            position: "absolute",
-            left: 14,
-            top: "50%",
-            transform: "translateY(-50%)",
-            width: 16,
-            height: 16,
-            color: "var(--ink-subtle)",
-          }}
-        />
-        <input
-          className="input"
-          style={{ paddingLeft: 38, fontSize: 13.5 }}
-          placeholder="Search by brand or offer (e.g. Starbucks, Nike, 20% off)..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
-      {/* Filter Bar */}
+      {/* Filter & Search Bar */}
       <div
         style={{
           display: "flex",
           gap: 8,
           flexWrap: "wrap",
           alignItems: "center",
-          marginBottom: 24,
+          marginBottom: 22,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--ink-subtle)", fontSize: 12.5 }}>
-          <Filter style={{ width: 13, height: 13 }} />
-          <span>Filter:</span>
+        <div style={{ position: "relative", flex: "1 1 200px" }}>
+          <Search
+            style={{
+              position: "absolute",
+              left: 10,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 14,
+              height: 14,
+              color: "var(--ink-muted)",
+            }}
+          />
+          <input
+            className="input"
+            style={{ paddingLeft: 32, fontSize: 13 }}
+            placeholder="Search by brand or offer..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
 
         <select
@@ -180,9 +171,9 @@ export default function BrowsePage() {
           onChange={(e) => setCategory(e.target.value)}
         >
           <option value="All">All Categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
+          {CATEGORIES.map((cat) => (
+            <option key={cat} value={cat}>
+              {cat}
             </option>
           ))}
         </select>
@@ -240,16 +231,16 @@ export default function BrowsePage() {
         >
           <Sparkles style={{ width: 32, height: 32, color: "var(--brand)", margin: "0 auto 10px" }} />
           <h4 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
-            {state.claimables.length === 0 ? "The Exchange is Fresh & Ready" : "No Matching Claimables"}
+            {state.claimables.length === 0 ? "The Exchange is Ready" : "No Matching Claimables"}
           </h4>
           <p style={{ color: "var(--ink-muted)", fontSize: 13.5, maxWidth: 420, margin: "0 auto 18px", lineHeight: 1.5 }}>
             {state.claimables.length === 0
-              ? "There are no vouchers on the marketplace yet. Upload an unused coupon or gift card to earn points and get the exchange started!"
+              ? "There are no vouchers on the marketplace yet. Pass an unused coupon or gift card to earn points and get the exchange started!"
               : "No vouchers match your current filters. Try resetting your search or widen the filters."}
           </p>
           <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
             <Link href="/upload" className="btn primary small">
-              + Upload Your First Claimable
+              + Pass Your First Promo
             </Link>
             {state.claimables.length > 0 && (
               <button
@@ -364,17 +355,17 @@ export default function BrowsePage() {
                   {c.offerTitle}
                 </p>
 
-                {/* Face Value */}
+                {/* Face Value / Percentage / Perk */}
                 <div
                   style={{
                     fontFamily: "var(--font-display)",
-                    fontSize: 22,
+                    fontSize: 20,
                     fontWeight: 800,
                     color: "var(--ink)",
                     marginBottom: 4,
                   }}
                 >
-                  {formatMoney(c.value, c.currency)}
+                  {formatDiscount(c)}
                 </div>
 
                 {/* Expiration Tag */}

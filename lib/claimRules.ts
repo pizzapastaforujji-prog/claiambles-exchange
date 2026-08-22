@@ -1,4 +1,4 @@
-import { CurrencyCode, CurrencyConfig, Category, RedemptionMethod, Claimable, ExchangeState } from "./types";
+import { CurrencyCode, CurrencyConfig, Category, RedemptionMethod, Claimable, ExchangeState, DiscountType } from "./types";
 
 export const CATEGORIES: Category[] = [
   "Food & Drink",
@@ -33,6 +33,7 @@ export const FX_TO_USD: Record<CurrencyCode, number> = {
 
 export const CONFIRM_WINDOW_DAYS = 3;
 export const UPFRONT_SHARE = 0.25;
+export const MAX_DAILY_UPLOADS = 10;
 
 export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -66,26 +67,57 @@ export function formatMoney(value: number | string, currency: CurrencyCode): str
   return `${currencySymbol(currency)}${num.toLocaleString()} ${currency}`;
 }
 
+export function formatDiscount(c: Partial<Claimable>): string {
+  if (c.discountType === "percent" || (c.percentOff && c.percentOff > 0)) {
+    return `${c.percentOff || c.value}% OFF`;
+  }
+  if (c.discountType === "perk" || (!c.value && !c.percentOff)) {
+    return "FREE PERK / SERVICE";
+  }
+  return formatMoney(c.value || 0, c.currency || "USD");
+}
+
 export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((email || "").trim());
 }
 
 /**
- * Calculates reward tier (1, 2, or 3) based on estimated USD value
+ * Calculates reward tier based on discount type and value
  */
-export function tierFor(valueUSD: number): number {
+export function tierFor(valueUSD: number, discountType: DiscountType = "amount", percentOff?: number): number {
+  if (discountType === "perk") return 1; // Small baseline for free service/perks without cash value
+  if (discountType === "percent") {
+    const pct = percentOff || valueUSD;
+    if (pct >= 50) return 3;
+    if (pct >= 25) return 2;
+    return 1;
+  }
   if (valueUSD >= 30) return 3;
   if (valueUSD >= 10) return 2;
   return 1;
 }
 
 /**
- * Total points rewarded based on tier and uploader's credit score (0-100)
+ * Total points rewarded based on tier, discount type, and uploader's credit score (0-100)
  */
-export function totalPointsFor(tier: number, creditScore: number): number {
-  const base = tier === 3 ? 30 : tier === 2 ? 15 : 6;
+export function totalPointsFor(
+  tier: number,
+  creditScore: number,
+  discountType: DiscountType = "amount"
+): number {
+  let base = 6;
+  if (discountType === "perk") {
+    base = 4; // Very small baseline points for service/free perk coupons with no cash/percent value
+  } else if (tier === 3) {
+    base = 30;
+  } else if (tier === 2) {
+    base = 15;
+  } else {
+    base = 8;
+  }
+
   const normalizedScore = Math.max(10, Math.min(100, creditScore || 50));
-  return Math.max(4, Math.round(base * (normalizedScore / 100)));
+  return Math.max(2, Math.round(base * (normalizedScore / 100)));
 }
 
 /**
@@ -103,20 +135,43 @@ export function hardValidate(
   candidate: Partial<Claimable>,
   allClaimables: Claimable[]
 ): { fail: boolean; reason?: string } {
+  // 1. Enforce Daily Upload Limit (Max 10 per account per day)
+  if (candidate.uploader) {
+    const today = todayISO();
+    const todayUploadCount = allClaimables.filter(
+      (c) => c.uploader === candidate.uploader && c.uploaded_at === today
+    ).length;
+    if (todayUploadCount >= MAX_DAILY_UPLOADS) {
+      return {
+        fail: true,
+        reason: `Daily upload limit reached: You can upload a maximum of ${MAX_DAILY_UPLOADS} claimables per day.`,
+      };
+    }
+  }
+
   if (!candidate.brand || !candidate.brand.trim()) {
     return { fail: true, reason: "Brand / company name is required." };
   }
   if (!candidate.offerTitle || !candidate.offerTitle.trim()) {
     return { fail: true, reason: "Offer title is required." };
   }
-  if (!candidate.value || Number(candidate.value) <= 0) {
-    return { fail: true, reason: "Face value must be greater than zero." };
+
+  if (candidate.discountType === "amount") {
+    if (!candidate.value || Number(candidate.value) <= 0) {
+      return { fail: true, reason: "Cash face value must be greater than zero." };
+    }
+  } else if (candidate.discountType === "percent") {
+    const pct = candidate.percentOff || Number(candidate.value);
+    if (!pct || pct <= 0 || pct > 100) {
+      return { fail: true, reason: "Percentage off must be between 1% and 100%." };
+    }
   }
+
   if (!candidate.expiry) {
     return { fail: true, reason: "Expiration date is required." };
   }
   if (daysUntil(candidate.expiry) < 0) {
-    return { fail: true, reason: "This expiration date has already passed." };
+    return { fail: true, reason: "This expiration date has already passed. Expired coupons cannot be uploaded." };
   }
 
   if (candidate.type === "code") {
@@ -139,7 +194,7 @@ export function hardValidate(
         (c) => c.imageDataUrl && c.imageDataUrl === candidate.imageDataUrl
       );
       if (dupPhoto) {
-        return { fail: true, reason: "This exact photo has already been uploaded to the exchange." };
+        return { fail: true, reason: "This exact voucher photo has already been uploaded." };
       }
     }
   }
@@ -148,137 +203,144 @@ export function hardValidate(
 }
 
 /**
- * Client-side image resizing and base64 compression for responsive uploads and AI Vision processing
+ * Sweeps expired and auto-confirm claimables
  */
-export function resizeImageToBase64(
-  file: File,
-  maxDim = 720,
-  quality = 0.8
-): Promise<{ data: string; mediaType: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read image file."));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("Invalid image format."));
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          const scale = maxDim / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject(new Error("Canvas context error."));
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/jpeg", quality);
-        resolve({
-          data: dataUrl.split(",")[1],
-          mediaType: "image/jpeg",
-        });
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Confirms a pending redemption: awards final points & boosts credit score
- */
-export function confirmClaimable(state: ExchangeState, claimableId: string): ExchangeState {
-  const c = state.claimables.find((x) => x.id === claimableId);
-  if (!c || c.status !== "pending_confirmation") return state;
-  const uploader = state.users[c.uploader];
-  if (!uploader) return state;
-
-  const nextUsers = {
-    ...state.users,
-    [c.uploader]: {
-      ...uploader,
-      points: uploader.points + c.points_final,
-      credit_score: Math.min(100, uploader.credit_score + 5),
-    },
-  };
-
-  const nextClaimables = state.claimables.map((x) =>
-    x.id === claimableId ? { ...x, status: "confirmed" as const } : x
-  );
-
-  return { ...state, users: nextUsers, claimables: nextClaimables };
-}
-
-/**
- * Disputes a bad code: refunds redeemer, claws back upfront points from uploader, drops uploader credit score
- */
-export function disputeClaimable(
-  state: ExchangeState,
-  claimableId: string,
-  reason: string
-): ExchangeState {
-  const c = state.claimables.find((x) => x.id === claimableId);
-  if (!c || c.status !== "pending_confirmation") return state;
-
-  const uploader = state.users[c.uploader];
-  const redeemer = c.redeemed_by ? state.users[c.redeemed_by] : null;
-
-  const nextUsers = { ...state.users };
-
-  if (uploader) {
-    nextUsers[c.uploader] = {
-      ...uploader,
-      points: Math.max(0, uploader.points - c.points_upfront),
-      credit_score: Math.max(0, uploader.credit_score - 20),
-    };
-  }
-
-  if (redeemer && c.redeemed_by) {
-    nextUsers[c.redeemed_by] = {
-      ...redeemer,
-      points: redeemer.points + c.points_total,
-    };
-  }
-
-  const nextClaimables = state.claimables.map((x) =>
-    x.id === claimableId
-      ? {
-          ...x,
-          status: "disputed" as const,
-          dispute_reason: reason || "Redeemer reported code failed to work.",
-        }
-      : x
-  );
-
-  return { ...state, users: nextUsers, claimables: nextClaimables };
-}
-
-/**
- * Automatically sweeps expired vouchers and auto-confirms vouchers that passed the 3-day window
- */
-export function sweepStatuses(state: ExchangeState): { data: ExchangeState; changed: boolean } {
-  let next = state;
-  let changed = false;
-
-  for (const c of state.claimables) {
-    if (c.status === "pending_confirmation" && c.confirm_by && daysUntil(c.confirm_by) < 0) {
-      next = confirmClaimable(next, c.id);
-      changed = true;
-    }
-  }
-
-  const updatedClaimables = next.claimables.map((c) => {
-    if (c.status === "valid" && daysUntil(c.expiry) < 0) {
-      changed = true;
+export function sweepStatuses(state: ExchangeState): { data: ExchangeState; sweptCount: number } {
+  const today = todayISO();
+  let count = 0;
+  const updatedClaimables = state.claimables.map((c) => {
+    // 1. Expire past due unredeemed vouchers
+    if (c.status === "valid" && c.expiry < today) {
+      count++;
       return { ...c, status: "expired" as const };
+    }
+    // 2. Auto-confirm vouchers whose 3-day confirm window has passed
+    if (c.status === "pending_confirmation" && c.confirm_by && c.confirm_by <= today) {
+      count++;
+      return { ...c, status: "confirmed" as const };
     }
     return c;
   });
 
   return {
-    data: { ...next, claimables: updatedClaimables },
-    changed,
+    data: {
+      ...state,
+      claimables: updatedClaimables,
+    },
+    sweptCount: count,
   };
+}
+
+export function confirmClaimable(state: ExchangeState, claimableId: string): ExchangeState {
+  const claimable = state.claimables.find((c) => c.id === claimableId);
+  if (!claimable) return state;
+
+  const uploader = state.users[claimable.uploader];
+  const redeemer = claimable.redeemed_by ? state.users[claimable.redeemed_by] : null;
+
+  const nextUsers = { ...state.users };
+
+  // Pay remaining 75% escrow points to uploader + credit score boost
+  if (uploader) {
+    nextUsers[claimable.uploader] = {
+      ...uploader,
+      points: uploader.points + claimable.points_final,
+      credit_score: Math.min(100, uploader.credit_score + 5),
+    };
+  }
+
+  // Redeemer gets +5 credit score boost for verifying
+  if (redeemer && claimable.redeemed_by) {
+    nextUsers[claimable.redeemed_by] = {
+      ...redeemer,
+      credit_score: Math.min(100, redeemer.credit_score + 5),
+    };
+  }
+
+  const nextClaimables = state.claimables.map((c) =>
+    c.id === claimableId ? { ...c, status: "confirmed" as const } : c
+  );
+
+  return {
+    ...state,
+    users: nextUsers,
+    claimables: nextClaimables,
+  };
+}
+
+export function disputeClaimable(
+  state: ExchangeState,
+  claimableId: string,
+  reason: string
+): ExchangeState {
+  const claimable = state.claimables.find((c) => c.id === claimableId);
+  if (!claimable) return state;
+
+  const redeemer = claimable.redeemed_by ? state.users[claimable.redeemed_by] : null;
+  const uploader = state.users[claimable.uploader];
+
+  const nextUsers = { ...state.users };
+
+  // Refund 100% of points spent back to redeemer
+  if (redeemer && claimable.redeemed_by) {
+    nextUsers[claimable.redeemed_by] = {
+      ...redeemer,
+      points: redeemer.points + claimable.points_total,
+    };
+  }
+
+  // Penalize dishonest uploader: claw back upfront points & reduce credit score
+  if (uploader) {
+    nextUsers[claimable.uploader] = {
+      ...uploader,
+      points: Math.max(0, uploader.points - claimable.points_upfront),
+      credit_score: Math.max(0, uploader.credit_score - 20),
+    };
+  }
+
+  const nextClaimables = state.claimables.map((c) =>
+    c.id === claimableId ? { ...c, status: "disputed" as const, dispute_reason: reason } : c
+  );
+
+  return {
+    ...state,
+    users: nextUsers,
+    claimables: nextClaimables,
+  };
+}
+
+export async function resizeImageToBase64(file: File): Promise<{ data: string; mediaType: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let { width, height } = img;
+        const maxDim = 1200;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Canvas context failed"));
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        const base64Data = dataUrl.split(",")[1];
+        resolve({ data: base64Data, mediaType: "image/jpeg" });
+      };
+      img.onerror = () => reject(new Error("Failed to load image for compression"));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("File read error"));
+    reader.readAsDataURL(file);
+  });
 }

@@ -6,12 +6,13 @@ import {
   CATEGORIES,
   CURRENCIES,
   REDEMPTION_METHODS,
+  MAX_DAILY_UPLOADS,
   hardValidate,
   resizeImageToBase64,
   todayISO,
   addDays,
 } from "@/lib/claimRules";
-import { ClaimAIVerdict, ClaimableType } from "@/lib/types";
+import { ClaimAIVerdict, ClaimableType, DiscountType } from "@/lib/types";
 import {
   FileText,
   Camera,
@@ -24,12 +25,17 @@ import {
   Coins,
   ArrowRight,
   Lock,
+  Percent,
+  DollarSign,
+  Gift,
+  Scan,
 } from "lucide-react";
 
 export default function UploadPage() {
   const { state, currentUser, sessionEmail, addClaimable, flash } = useExchange();
 
   const [type, setType] = useState<ClaimableType>("code");
+  const [discountType, setDiscountType] = useState<DiscountType>("amount");
   const [brand, setBrand] = useState("");
   const [offerTitle, setOfferTitle] = useState("");
   const [code, setCode] = useState("");
@@ -40,12 +46,19 @@ export default function UploadPage() {
   const [redemptionMethod, setRedemptionMethod] = useState(REDEMPTION_METHODS[0]);
   const [currency, setCurrency] = useState(currentUser?.preferred_currency || "USD");
   const [value, setValue] = useState("");
+  const [percentOff, setPercentOff] = useState("");
   const [expiry, setExpiry] = useState(addDays(todayISO(), 14));
 
   const [checking, setChecking] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
   const [result, setResult] = useState<ClaimAIVerdict | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const today = todayISO();
+  const todayUploadCount = sessionEmail
+    ? state.claimables.filter((c) => c.uploader === sessionEmail && c.uploaded_at === today).length
+    : 0;
 
   const removePhoto = () => {
     setImageDataUrl(null);
@@ -61,11 +74,51 @@ export default function UploadPage() {
       const { data, mediaType } = await resizeImageToBase64(file);
       setImageDataUrl(data);
       setImageMediaType(mediaType);
-      flash("Photo attached and ready for Gemini Vision scan.");
+      flash("Photo attached. Click 'AI Auto-Extract' to auto-fill details!");
     } catch (err: any) {
       flash(err.message || "Failed to process photo.");
     } finally {
       setImageBusy(false);
+    }
+  };
+
+  // Quick auto-extract feature with Gemini Vision
+  const handleAutoExtractFromPhoto = async () => {
+    if (!imageDataUrl) {
+      flash("Please attach a photo first.");
+      return;
+    }
+    setScanning(true);
+    try {
+      const res = await fetch("/api/claim-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "photo",
+          imageDataUrl,
+          imageMediaType,
+          currentDate: todayISO(),
+        }),
+      });
+
+      const verdict: ClaimAIVerdict = await res.json();
+      if (verdict.detectedBrand) setBrand(verdict.detectedBrand);
+      if (verdict.detectedOffer) setOfferTitle(verdict.detectedOffer);
+      if (verdict.detectedExpiry) setExpiry(verdict.detectedExpiry);
+      if (verdict.detectedCode) setCode(verdict.detectedCode);
+      if (verdict.detectedDiscountType) {
+        setDiscountType(verdict.detectedDiscountType);
+        if (verdict.detectedDiscountType === "amount" && verdict.detectedValue) {
+          setValue(String(verdict.detectedValue));
+        } else if (verdict.detectedDiscountType === "percent" && verdict.detectedValue) {
+          setPercentOff(String(verdict.detectedValue));
+        }
+      }
+      flash("Details auto-extracted from photo by Gemini Vision!");
+    } catch (e) {
+      flash("Auto-extract failed. You can still fill in details manually.");
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -77,8 +130,14 @@ export default function UploadPage() {
     }
     if (checking || imageBusy) return;
 
+    if (todayUploadCount >= MAX_DAILY_UPLOADS) {
+      flash(`Daily upload limit reached (${MAX_DAILY_UPLOADS}/day). Please try again tomorrow.`);
+      return;
+    }
+
     const candidate = {
       type,
+      discountType,
       brand: brand.trim(),
       offerTitle: offerTitle.trim(),
       code: type === "code" ? code.trim() : "",
@@ -88,12 +147,13 @@ export default function UploadPage() {
       category,
       redemptionMethod,
       currency,
-      value: Number(value),
+      value: discountType === "amount" ? Number(value) : discountType === "percent" ? Number(percentOff) : 0,
+      percentOff: discountType === "percent" ? Number(percentOff) : undefined,
       expiry,
     };
 
-    // 1. Instant deterministic hard validation
-    const hardCheck = hardValidate(candidate, state.claimables);
+    // 1. Instant deterministic validation
+    const hardCheck = hardValidate({ ...candidate, uploader: sessionEmail }, state.claimables);
     if (hardCheck.fail) {
       setResult({
         valid: false,
@@ -115,6 +175,7 @@ export default function UploadPage() {
         body: JSON.stringify({
           ...candidate,
           creditScore: currentUser.credit_score,
+          currentDate: todayISO(),
         }),
       });
 
@@ -122,10 +183,9 @@ export default function UploadPage() {
       setResult(verdict);
 
       // 3. Update store and credit points
-      await addClaimable(candidate, verdict);
+      const addRes = await addClaimable(candidate, verdict);
 
-      if (verdict.valid) {
-        // Reset form
+      if (addRes.success && verdict.valid) {
         setBrand("");
         setOfferTitle("");
         setCode("");
@@ -133,6 +193,7 @@ export default function UploadPage() {
         setImageMediaType(null);
         setImageNote("");
         setValue("");
+        setPercentOff("");
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     } catch (err: any) {
@@ -152,10 +213,10 @@ export default function UploadPage() {
             Authentication Required
           </div>
           <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
-            Sign in to Upload Claimables
+            Sign in to PassThePromo
           </h2>
           <p style={{ color: "var(--ink-muted)", fontSize: 13.5, lineHeight: 1.5, marginBottom: 20 }}>
-            Create an account or sign in to submit vouchers, earn upfront points, and start trading with peers.
+            Create an account or sign in to upload coupons, earn upfront points, and start trading with peers.
           </p>
           <button
             type="button"
@@ -163,7 +224,7 @@ export default function UploadPage() {
             onClick={() => {
               const navBtn = document.querySelector("header button.btn.primary") as HTMLButtonElement;
               if (navBtn) navBtn.click();
-              else flash("Click 'Sign up' in the top right corner to get started.");
+              else flash("Click 'Sign up' in the top navigation to get started.");
             }}
           >
             Log In / Sign Up
@@ -175,18 +236,24 @@ export default function UploadPage() {
   }
 
   return (
-    <div style={{ maxWidth: 540, margin: "30px auto 0" }}>
+    <div style={{ maxWidth: 560, margin: "30px auto 0" }}>
       <div style={{ marginBottom: 20, textAlign: "center" }}>
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>
-          Upload a Claimable
+          Pass a Promo
         </h2>
-        <p style={{ color: "var(--ink-muted)", fontSize: 13.5, maxWidth: 440, margin: "0 auto" }}>
-          Audited by <strong>Google Gemini Claim AI</strong> for authenticity, OCR code scanning, and instant upfront points.
+        <p style={{ color: "var(--ink-muted)", fontSize: 13.5, maxWidth: 460, margin: "0 auto 8px" }}>
+          Audited by <strong>Google Gemini Vision AI</strong> for authenticity, OCR code scanning, and instant upfront points.
         </p>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-subtle)" }}>
+          <span>Daily uploads:</span>
+          <strong style={{ color: todayUploadCount >= MAX_DAILY_UPLOADS ? "var(--alert)" : "var(--brand)" }}>
+            {todayUploadCount} / {MAX_DAILY_UPLOADS} used today
+          </strong>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="card" style={{ padding: "24px 22px" }}>
-        {/* Type Toggle */}
+        {/* Upload Mode Toggle */}
         <div
           style={{
             display: "flex",
@@ -229,45 +296,35 @@ export default function UploadPage() {
           </button>
         </div>
 
-        {/* Brand & Offer Title */}
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Brand / Company</label>
-          <input
-            className="input"
-            required
-            placeholder="e.g. Starbucks, Target, Nike, Uber Eats"
-            value={brand}
-            onChange={(e) => setBrand(e.target.value)}
-          />
-        </div>
+        {/* Photo Upload Section */}
+        {type === "photo" && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "16px",
+              background: "var(--canvas)",
+              borderRadius: "var(--radius-md)",
+              border: "1px dashed var(--border)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <label className="label" style={{ marginBottom: 0 }}>
+                Attach Voucher Photo / Receipt
+              </label>
+              {imageDataUrl && (
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={handleAutoExtractFromPhoto}
+                  disabled={scanning}
+                  style={{ fontSize: 11.5, padding: "3px 8px" }}
+                >
+                  <Scan style={{ width: 12, height: 12 }} />
+                  {scanning ? "Scanning Photo..." : "AI Auto-Extract"}
+                </button>
+              )}
+            </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Offer Title / Discount</label>
-          <input
-            className="input"
-            required
-            placeholder="e.g. 20% off any order, $15 off $50 minimum spend"
-            value={offerTitle}
-            onChange={(e) => setOfferTitle(e.target.value)}
-          />
-        </div>
-
-        {/* Text Code or Photo Upload */}
-        {type === "code" ? (
-          <div style={{ marginBottom: 14 }}>
-            <label className="label">Coupon / Voucher Code</label>
-            <input
-              className="input"
-              required
-              style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
-              placeholder="e.g. SAVE20OFF or VOUCHER-9876"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-            />
-          </div>
-        ) : (
-          <div style={{ marginBottom: 14 }}>
-            <label className="label">Photo of Voucher / Gift Card Receipt</label>
             <input
               ref={fileInputRef}
               type="file"
@@ -279,17 +336,18 @@ export default function UploadPage() {
 
             {imageBusy && (
               <div style={{ fontSize: 12, color: "var(--ink-subtle)", marginBottom: 8 }}>
-                Compressing image for Gemini Vision...
+                Processing image for Gemini Vision...
               </div>
             )}
 
             {imageDataUrl && (
-              <div style={{ position: "relative", display: "inline-block", marginBottom: 10 }}>
+              <div style={{ position: "relative", display: "inline-block", marginTop: 4, marginBottom: 8 }}>
                 <img
                   src={`data:${imageMediaType || "image/jpeg"};base64,${imageDataUrl}`}
                   alt="Uploaded preview"
                   style={{
-                    maxWidth: 160,
+                    maxWidth: 180,
+                    maxHeight: 140,
                     borderRadius: "var(--radius-sm)",
                     border: "1px solid var(--border)",
                     display: "block",
@@ -320,20 +378,152 @@ export default function UploadPage() {
               </div>
             )}
 
-            <label className="label" style={{ marginTop: 6 }}>
-              Notes for Claim AI Vision (Optional)
-            </label>
             <input
               className="input"
-              placeholder="e.g. Barcode is on the reverse side"
+              placeholder="Notes for AI Vision (e.g. Barcode on reverse side)"
               value={imageNote}
               onChange={(e) => setImageNote(e.target.value)}
+              style={{ fontSize: 12.5 }}
             />
           </div>
         )}
 
-        {/* Category & Redemption Method */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+        {/* Brand & Offer Title */}
+        <div style={{ marginBottom: 12 }}>
+          <label className="label">Brand / Store Name</label>
+          <input
+            className="input"
+            required
+            placeholder="e.g. Starbucks, Nike, Subway, Target"
+            value={brand}
+            onChange={(e) => setBrand(e.target.value)}
+          />
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label className="label">Offer Description</label>
+          <input
+            className="input"
+            required
+            placeholder="e.g. $15 off $50 spend, 20% off all shoes, Free large beverage"
+            value={offerTitle}
+            onChange={(e) => setOfferTitle(e.target.value)}
+          />
+        </div>
+
+        {/* Text Code (if type == code) */}
+        {type === "code" && (
+          <div style={{ marginBottom: 14 }}>
+            <label className="label">Coupon / Promo Code</label>
+            <input
+              className="input"
+              required
+              style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+              placeholder="e.g. SAVE20OFF or VOUCHER-9876"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+            />
+          </div>
+        )}
+
+        {/* Discount Type Selector */}
+        <div style={{ marginBottom: 14 }}>
+          <label className="label">Discount Format</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.2fr", gap: 6 }}>
+            <button
+              type="button"
+              className={`btn ${discountType === "amount" ? "primary" : "secondary"} small`}
+              onClick={() => setDiscountType("amount")}
+            >
+              <DollarSign style={{ width: 13, height: 13 }} />
+              Cash / $ Value
+            </button>
+            <button
+              type="button"
+              className={`btn ${discountType === "percent" ? "primary" : "secondary"} small`}
+              onClick={() => setDiscountType("percent")}
+            >
+              <Percent style={{ width: 13, height: 13 }} />
+              Percentage %
+            </button>
+            <button
+              type="button"
+              className={`btn ${discountType === "perk" ? "primary" : "secondary"} small`}
+              onClick={() => setDiscountType("perk")}
+            >
+              <Gift style={{ width: 13, height: 13 }} />
+              Free Perk / Service
+            </button>
+          </div>
+        </div>
+
+        {/* Dynamic Value Inputs */}
+        {discountType === "amount" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10, marginBottom: 14 }}>
+            <div>
+              <label className="label">Currency</label>
+              <select
+                className="input"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value as any)}
+              >
+                {CURRENCIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} ({c.symbol})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Face Value ($ Amount)</label>
+              <input
+                className="input"
+                type="number"
+                min="1"
+                step="0.01"
+                required
+                placeholder="15.00"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
+
+        {discountType === "percent" && (
+          <div style={{ marginBottom: 14 }}>
+            <label className="label">Discount Percentage (% Off)</label>
+            <input
+              className="input"
+              type="number"
+              min="1"
+              max="100"
+              required
+              placeholder="e.g. 20 (for 20% off)"
+              value={percentOff}
+              onChange={(e) => setPercentOff(e.target.value)}
+            />
+          </div>
+        )}
+
+        {discountType === "perk" && (
+          <div
+            style={{
+              padding: "9px 12px",
+              background: "var(--gold-light)",
+              border: "1px solid rgba(192, 125, 22, 0.2)",
+              borderRadius: "var(--radius-sm)",
+              fontSize: 12.5,
+              color: "var(--gold)",
+              marginBottom: 14,
+            }}
+          >
+            <strong>Free Perk / Service Voucher:</strong> Points reward is calculated as a baseline starter reward (4 pts) without requiring a cash price.
+          </div>
+        )}
+
+        {/* Category, Method, Expiry */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.3fr", gap: 10, marginBottom: 18 }}>
           <div>
             <label className="label">Category</label>
             <select
@@ -363,38 +553,6 @@ export default function UploadPage() {
               ))}
             </select>
           </div>
-        </div>
-
-        {/* Currency, Value, Expiry */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 1.5fr", gap: 10, marginBottom: 18 }}>
-          <div>
-            <label className="label">Currency</label>
-            <select
-              className="input"
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value as any)}
-            >
-              {CURRENCIES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="label">Face Value</label>
-            <input
-              className="input"
-              type="number"
-              min="1"
-              step="0.01"
-              required
-              placeholder="15.00"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-            />
-          </div>
 
           <div>
             <label className="label">Expiry Date</label>
@@ -414,17 +572,19 @@ export default function UploadPage() {
           type="submit"
           className="btn primary"
           style={{ width: "100%", padding: "11px 18px", fontSize: 14.5 }}
-          disabled={checking || imageBusy}
+          disabled={checking || imageBusy || todayUploadCount >= MAX_DAILY_UPLOADS}
         >
           {checking ? (
             <>
               <Sparkles style={{ width: 16, height: 16 }} />
-              Auditing with Gemini Claim AI...
+              Auditing with Gemini Vision AI...
             </>
+          ) : todayUploadCount >= MAX_DAILY_UPLOADS ? (
+            "Daily Upload Limit Reached (10/day)"
           ) : (
             <>
               <UploadCloud style={{ width: 16, height: 16 }} />
-              Submit to Claim AI
+              Submit to Gemini Vision AI
             </>
           )}
         </button>
@@ -455,7 +615,7 @@ export default function UploadPage() {
                 color: result.valid ? "var(--brand)" : "var(--alert)",
               }}
             >
-              {result.valid ? "APPROVED & VERIFIED" : "VERIFICATION FAILED"}
+              {result.valid ? "APPROVED & LIVE" : "VERIFICATION REJECTED"}
             </h4>
           </div>
 
@@ -465,8 +625,7 @@ export default function UploadPage() {
 
           {result.detectedCode && (
             <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--ink-secondary)" }}>
-              OCR Identifier Scanned:{" "}
-              <strong style={{ fontFamily: "var(--font-mono)" }}>{result.detectedCode}</strong>
+              OCR Identifier: <strong style={{ fontFamily: "var(--font-mono)" }}>{result.detectedCode}</strong>
             </div>
           )}
 
@@ -487,7 +646,7 @@ export default function UploadPage() {
               <Coins style={{ width: 14, height: 14, color: "var(--gold)" }} />
               <span>
                 <strong>25% upfront points</strong> credited to your wallet now. The remaining{" "}
-                <strong>75%</strong> will transfer once confirmed by a redeemer!
+                <strong>75%</strong> will transfer once confirmed by a recipient!
               </span>
             </div>
           )}

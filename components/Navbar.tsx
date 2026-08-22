@@ -8,22 +8,19 @@ import { isValidEmail } from "@/lib/claimRules";
 import {
   Coins,
   ShieldCheck,
-  Ticket,
   User,
   LogIn,
   LogOut,
   Sparkles,
-  AlertCircle,
-  Lock,
-  Mail,
   ArrowRight,
   Eye,
   EyeOff,
+  RefreshCw,
 } from "lucide-react";
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { sessionEmail, currentUser, logout, login, signup, flash } = useExchange();
+  const { sessionEmail, currentUser, logout, login, signup, refreshFromCloud, flash } = useExchange();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authEmail, setAuthEmail] = useState("");
@@ -31,6 +28,7 @@ export default function Navbar() {
   const [showPassword, setShowPassword] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   const navItems = [
     { href: "/", label: "Home" },
@@ -90,6 +88,13 @@ export default function Navbar() {
     }
   };
 
+  const handleManualSync = async () => {
+    setRefreshing(true);
+    await refreshFromCloud();
+    flash("Cloud database synced!");
+    setTimeout(() => setRefreshing(false), 500);
+  };
+
   const isAdmin =
     currentUser?.role === "admin" ||
     Boolean(
@@ -105,14 +110,14 @@ export default function Navbar() {
           borderBottom: "1px solid var(--border)",
           position: "sticky",
           top: 0,
-          background: "rgba(251, 249, 245, 0.9)",
-          backdropFilter: "blur(10px)",
+          background: "rgba(251, 249, 245, 0.92)",
+          backdropFilter: "blur(12px)",
           zIndex: 40,
         }}
       >
         <div
           style={{
-            maxWidth: 1040,
+            maxWidth: 1060,
             margin: "0 auto",
             padding: "12px 20px",
             display: "flex",
@@ -122,36 +127,42 @@ export default function Navbar() {
             flexWrap: "wrap",
           }}
         >
-          {/* Logo */}
+          {/* Brand Logo & Name */}
           <Link
             href="/"
             style={{
               fontFamily: "var(--font-display)",
-              fontSize: 22,
+              fontSize: 21,
               fontWeight: 800,
-              letterSpacing: "-0.02em",
+              letterSpacing: "-0.03em",
               display: "flex",
               alignItems: "center",
-              gap: 8,
+              gap: 9,
               color: "var(--ink)",
             }}
           >
+            {/* Custom Aesthetic PassThePromo Logo Icon */}
             <div
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: "var(--radius-sm)",
-                background: "var(--brand-light)",
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                background: "linear-gradient(135deg, #1E5E3A 0%, #2A8251 100%)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "var(--brand)",
-                border: "1px solid rgba(30, 94, 58, 0.2)",
+                color: "#ffffff",
+                boxShadow: "0 4px 10px rgba(30, 94, 58, 0.25)",
               }}
             >
-              <Ticket style={{ width: 17, height: 17 }} />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 8C4 6.89543 4.89543 6 6 6H18C19.1046 6 20 6.89543 20 8V9C18.8954 9 18 9.89543 18 11C18 12.1046 18.8954 13 20 13V16C20 17.1046 19.1046 18 18 18H6C4.89543 18 4 17.1046 4 16V13C5.10457 13 6 12.1046 6 11C6 9.89543 5.10457 9 4 9V8Z" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M10 11L14 11M14 11L12 9M14 11L12 13" stroke="#FDE68A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </div>
-            <span>Claim<span style={{ color: "var(--brand)" }}>Exchange</span></span>
+            <span>
+              Pass<span style={{ color: "var(--brand)" }}>ThePromo</span>
+            </span>
           </Link>
 
           {/* Navigation Links */}
@@ -180,9 +191,20 @@ export default function Navbar() {
           </nav>
 
           {/* User Status / Auth Controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Real-time Cloud Sync Button */}
+            <button
+              type="button"
+              className="btn secondary small"
+              onClick={handleManualSync}
+              title="Sync live data with cloud"
+              style={{ padding: "6px 8px", borderRadius: "var(--radius-full)" }}
+            >
+              <RefreshCw style={{ width: 13, height: 13, transform: refreshing ? "rotate(180deg)" : "none", transition: "transform 0.4s ease" }} />
+            </button>
+
             {currentUser ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {/* Credit Score & Points Badges */}
                 <div
                   style={{
@@ -218,14 +240,13 @@ export default function Navbar() {
                       fontWeight: 700,
                       color: "var(--brand)",
                     }}
-                    title="Credit Trust Score"
+                    title="Trust Score"
                   >
                     <ShieldCheck style={{ width: 13, height: 13 }} />
                     {currentUser.credit_score}
                   </span>
                 </div>
 
-                {/* User Sign Out */}
                 <button
                   type="button"
                   className="btn secondary small"
@@ -329,12 +350,12 @@ export default function Navbar() {
 
             <div style={{ marginBottom: 16 }}>
               <h3 style={{ fontFamily: "var(--font-display)", fontSize: 21, fontWeight: 700, marginBottom: 4 }}>
-                {authMode === "login" ? "Welcome back" : "Create your account"}
+                {authMode === "login" ? "Welcome back" : "Create your PassThePromo account"}
               </h3>
               <p style={{ fontSize: 13, color: "var(--ink-muted)", lineHeight: 1.4 }}>
                 {authMode === "login"
-                  ? "Access your points wallet, uploaded vouchers, and active redemptions."
-                  : "Join the exchange and receive +20 welcome bonus points with a credit score of 50."}
+                  ? "Access your points wallet, uploaded vouchers, and active deals."
+                  : "Join the community and get +20 welcome bonus points with a credit score of 50."}
               </p>
             </div>
 

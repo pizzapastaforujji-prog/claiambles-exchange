@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useExchange } from "@/lib/ExchangeContext";
-import { formatMoney } from "@/lib/claimRules";
+import { formatDiscount } from "@/lib/claimRules";
 import {
   ShieldAlert,
   ShieldCheck,
@@ -289,7 +289,7 @@ export default function AdminPage() {
                     {c.brand} — {c.offerTitle}
                   </h4>
                   <div style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
-                    Value: <strong>{formatMoney(c.value, c.currency)}</strong> · Total: <strong>{c.points_total} pts</strong> · Expires: {c.expiry}
+                    Discount: <strong>{formatDiscount(c)}</strong> · Total: <strong>{c.points_total} pts</strong> · Expires: {c.expiry}
                   </div>
                 </div>
 
