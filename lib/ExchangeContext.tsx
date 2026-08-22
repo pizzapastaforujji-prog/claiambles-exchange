@@ -363,7 +363,25 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
     };
 
     const supabaseId = await insertClaimable(newClaimable);
-    if (supabaseId) {
+    if (!supabaseId && isSupabaseConfigured) {
+      // Insert failed — likely a Supabase constraint or config issue
+      // First, ensure the profile exists then retry once
+      try {
+        const currentProfile = state.users[sessionEmail];
+        if (currentProfile) {
+          await upsertProfile(currentProfile);
+        }
+        const retryId = await insertClaimable(newClaimable);
+        if (!retryId) {
+          flash("⚠️ Upload failed — could not save to database. Check your Supabase setup.");
+          return { success: false, upfront: 0, final: 0, reason: "Database insert failed. Please check console for details." };
+        }
+        newClaimable.id = retryId;
+      } catch {
+        flash("⚠️ Upload failed — could not save to database.");
+        return { success: false, upfront: 0, final: 0, reason: "Database insert failed." };
+      }
+    } else if (supabaseId) {
       newClaimable.id = supabaseId;
     }
 
