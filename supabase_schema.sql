@@ -1,11 +1,17 @@
 -- ============================================================================
--- CLAIMABLES EXCHANGE (CLAIMEXCHANGE) - SUPABASE POSTGRESQL SCHEMA v2
+-- PASSTHEPROMO - SUPABASE POSTGRESQL SCHEMA v3
 -- ============================================================================
 -- Instructions: Run this ENTIRE script in the Supabase SQL Editor:
 -- https://supabase.com/dashboard/project/_/sql/new
 --
 -- This version uses custom email/password auth (NO Supabase Auth dependency).
 -- Profiles and claimables are referenced by email, not auth UUID.
+-- v3 changes:
+--   - REMOVED FK constraints on claimables/redemptions (prevents silent
+--     insert failures when profile row hasn't been synced yet)
+--   - Added discount_type column (amount | percent | perk)
+--   - Added percent_off column for percentage discounts
+--   - face_value now allows 0 (for perk/percent type coupons)
 -- ============================================================================
 
 -- Enable UUID generation extension
@@ -52,31 +58,36 @@ CREATE TRIGGER profiles_updated_at
 
 -- ----------------------------------------------------------------------------
 -- 2. CLAIMABLES TABLE (Vouchers, Gift Cards, Coupons)
+-- NOTE: No FK constraints on uploader_email / redeemed_by for resilience.
+--       Our application layer ensures email integrity.
 -- ----------------------------------------------------------------------------
 CREATE TABLE public.claimables (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    uploader_email TEXT NOT NULL REFERENCES public.profiles(email) ON DELETE CASCADE,
+    uploader_email TEXT NOT NULL,                 -- No FK — resilient inserts
     type TEXT NOT NULL CHECK (type IN ('code', 'photo')),
     brand TEXT NOT NULL,
     offer_title TEXT NOT NULL,
+    discount_type TEXT NOT NULL DEFAULT 'amount'
+        CHECK (discount_type IN ('amount', 'percent', 'perk')),
     code TEXT,                        -- Plain text coupon code
     image_url TEXT,                   -- URL in Supabase Storage (optional)
     image_data_base64 TEXT,           -- Base64 image fallback
     image_media_type TEXT DEFAULT 'image/jpeg',
     image_note TEXT,
-    category TEXT NOT NULL
+    category TEXT NOT NULL DEFAULT 'Other'
         CHECK (category IN ('Food & Drink', 'Shopping', 'Travel', 'Entertainment', 'Services', 'Other')),
-    redemption_method TEXT NOT NULL
+    redemption_method TEXT NOT NULL DEFAULT 'Online'
         CHECK (redemption_method IN ('Online', 'In-store', 'Both')),
     currency TEXT NOT NULL DEFAULT 'USD',
-    face_value NUMERIC(10, 2) NOT NULL CHECK (face_value > 0),
+    face_value NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (face_value >= 0), -- 0 allowed for perk/percent
+    percent_off NUMERIC(5, 2),        -- For percent discount type (0–100)
     expiry_date DATE NOT NULL,
     status TEXT NOT NULL DEFAULT 'valid'
         CHECK (status IN ('valid', 'pending_confirmation', 'confirmed', 'disputed', 'expired', 'admin_review')),
     points_total INTEGER NOT NULL DEFAULT 6,
     points_upfront INTEGER NOT NULL DEFAULT 2,
     points_final INTEGER NOT NULL DEFAULT 4,
-    redeemed_by TEXT REFERENCES public.profiles(email) ON DELETE SET NULL,
+    redeemed_by TEXT,                 -- No FK — resilient updates
     redeemed_at DATE,
     confirm_by DATE,
     dispute_reason TEXT,
@@ -97,11 +108,12 @@ CREATE TRIGGER claimables_updated_at
 
 -- ----------------------------------------------------------------------------
 -- 3. REDEMPTIONS TABLE (Audit Trail & Daily Limit Tracking)
+-- NOTE: No FK constraints for resilient inserts.
 -- ----------------------------------------------------------------------------
 CREATE TABLE public.redemptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    claimable_id UUID NOT NULL REFERENCES public.claimables(id) ON DELETE CASCADE,
-    redeemed_by TEXT NOT NULL REFERENCES public.profiles(email) ON DELETE CASCADE,
+    claimable_id UUID NOT NULL,       -- No FK — resilient inserts
+    redeemed_by TEXT NOT NULL,        -- No FK — resilient inserts
     redeemed_at DATE NOT NULL DEFAULT CURRENT_DATE,
     points_spent INTEGER NOT NULL CHECK (points_spent >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -142,5 +154,5 @@ CREATE POLICY "Anyone can upload claimable photos" ON storage.objects
     FOR INSERT WITH CHECK (bucket_id = 'claimable-photos');
 
 -- ============================================================================
--- DONE! Your database is ready.
+-- DONE! Your database is ready (v3).
 -- ============================================================================
