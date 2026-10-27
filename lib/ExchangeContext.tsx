@@ -26,6 +26,7 @@ import {
   totalPointsFor,
   splitPoints,
   hardValidate,
+  normalizeCode,
 } from "./claimRules";
 
 const MASTER_EMAIL = "ujjwalsha2009@gmail.com";
@@ -332,6 +333,31 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       return { success: false, upfront: 0, final: 0, reason: verdict.reason };
     }
 
+    const resolvedCode = candidate.type === "code"
+      ? (candidate.code || "").trim()
+      : (verdict.detectedCode || candidate.code || "").trim();
+
+    // Secondary duplicate check: verify code (extracted or entered) does not already exist
+    if (resolvedCode) {
+      const normResolved = normalizeCode(resolvedCode);
+      if (normResolved.length >= 3) {
+        const isDuplicate = state.claimables.some((c) => {
+          const cCode = normalizeCode(c.code);
+          const cAiCode = normalizeCode(c.ai_detected_code);
+          return cCode === normResolved || cAiCode === normResolved;
+        });
+        if (isDuplicate) {
+          flash("⚠️ Duplicate coupon: This exact code is already on the exchange.");
+          return {
+            success: false,
+            upfront: 0,
+            final: 0,
+            reason: "This coupon code has already been uploaded to the exchange.",
+          };
+        }
+      }
+    }
+
     const discountType: DiscountType = verdict.detectedDiscountType || candidate.discountType || "amount";
     const total = totalPointsFor(verdict.tier || 1, user.credit_score, discountType);
     const { upfront, final } = splitPoints(total);
@@ -343,7 +369,7 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       discountType,
       brand: (verdict.detectedBrand || candidate.brand || "").trim(),
       offerTitle: (verdict.detectedOffer || candidate.offerTitle || "").trim(),
-      code: candidate.type === "code" ? (candidate.code || "").trim() : undefined,
+      code: resolvedCode || undefined,
       imageDataUrl: candidate.type === "photo" ? candidate.imageDataUrl : null,
       imageMediaType: candidate.type === "photo" ? candidate.imageMediaType : null,
       imageNote: candidate.imageNote || "",
@@ -359,7 +385,7 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
       points_final: final,
       uploaded_at: todayISO(),
       ai_reason: verdict.reason,
-      ai_detected_code: verdict.detectedCode || "",
+      ai_detected_code: verdict.detectedCode || resolvedCode || "",
     };
 
     const supabaseId = await insertClaimable(newClaimable);
