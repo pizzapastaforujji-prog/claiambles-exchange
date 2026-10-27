@@ -54,37 +54,53 @@ export async function POST(req: NextRequest) {
   try {
     const { messages, userContext } = await req.json();
 
-    if (!GEMINI_API_KEY) {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
+    if (!apiKey) {
       return NextResponse.json({
         reply: "AI Support is currently in offline mode (API key not configured). Please check back soon!",
       });
     }
 
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: "gemini-3.6-flash",
       systemInstruction: SYSTEM_PROMPT,
     });
 
-    // Format chat history for Google Generative AI
-    const validHistory = (messages || [])
-      .slice(-10) // Keep last 10 messages for context
-      .map((m: { role: string; content: string }) => ({
-        role: m.role === "user" ? "user" : "model",
-        parts: [{ text: m.content }],
-      }));
+    const incoming = Array.isArray(messages) ? messages : [];
 
-    // If history is empty, respond to the last user message
-    const lastMessage = validHistory.pop();
-    if (!lastMessage || lastMessage.role !== "user") {
+    // Find the latest user message
+    const userMessages = incoming.filter((m: { role: string }) => m.role === "user");
+    if (userMessages.length === 0) {
       return NextResponse.json({ reply: "Hello! How can I help you with PassThePromo today?" });
+    }
+    const lastUserMsg = userMessages[userMessages.length - 1].content;
+
+    // Build prior conversation history (everything before the last user message)
+    // Important: Google Gemini SDK requires that history strictly starts with role 'user' and alternates
+    const lastUserIdx = incoming.lastIndexOf(userMessages[userMessages.length - 1]);
+    const prior = incoming.slice(0, lastUserIdx);
+    const firstUserIdx = prior.findIndex((m: { role: string }) => m.role === "user");
+
+    const cleanHistory: { role: string; parts: { text: string }[] }[] = [];
+    if (firstUserIdx !== -1) {
+      let expectedRole = "user";
+      for (const m of prior.slice(firstUserIdx)) {
+        if (m.role === expectedRole && m.content) {
+          cleanHistory.push({
+            role: m.role === "user" ? "user" : "model",
+            parts: [{ text: m.content }],
+          });
+          expectedRole = expectedRole === "user" ? "model" : "user";
+        }
+      }
     }
 
     const chat = model.startChat({
-      history: validHistory,
+      history: cleanHistory.slice(-8), // Keep recent turns
     });
 
-    let promptWithContext = lastMessage.parts[0].text;
+    let promptWithContext = lastUserMsg;
     if (userContext?.email) {
       promptWithContext = `[User: ${userContext.email}, Points: ${userContext.points || 0}, Trust: ${userContext.credit_score || 50}] ${promptWithContext}`;
     }
