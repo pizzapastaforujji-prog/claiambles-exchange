@@ -3,15 +3,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useExchange } from "@/lib/ExchangeContext";
 import {
-  MessageSquare,
   X,
   Send,
   Sparkles,
   Minus,
   Bot,
-  User,
   HelpCircle,
   RotateCcw,
+  GripHorizontal,
 } from "lucide-react";
 
 interface ChatMessage {
@@ -41,8 +40,79 @@ export default function SupportChat() {
     },
   ]);
 
+  // Draggable state (works for both floating bubble and open chat window)
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    hasMoved: boolean;
+  } | null>(null);
+
+  const containerRef = useRef<HTMLElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const startDrag = (clientX: number, clientY: number) => {
+    const elem = containerRef.current;
+    if (!elem) return;
+    const rect = elem.getBoundingClientRect();
+    dragRef.current = {
+      startX: clientX,
+      startY: clientY,
+      origX: rect.left,
+      origY: rect.top,
+      hasMoved: false,
+    };
+    setIsDragging(true);
+  };
+
+  useEffect(() => {
+    const handlePointerMove = (e: MouseEvent | TouchEvent) => {
+      if (!dragRef.current || !containerRef.current) return;
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+
+      const deltaX = clientX - dragRef.current.startX;
+      const deltaY = clientY - dragRef.current.startY;
+
+      if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+        dragRef.current.hasMoved = true;
+      }
+
+      const elem = containerRef.current;
+      const width = elem.offsetWidth || 380;
+      const height = elem.offsetHeight || 520;
+
+      // Keep within viewport boundaries
+      const nextX = Math.max(10, Math.min(window.innerWidth - width - 10, dragRef.current.origX + deltaX));
+      const nextY = Math.max(10, Math.min(window.innerHeight - height - 10, dragRef.current.origY + deltaY));
+
+      setPosition({ x: nextX, y: nextY });
+    };
+
+    const handlePointerUp = () => {
+      if (dragRef.current) {
+        setIsDragging(false);
+      }
+    };
+
+    if (isDragging) {
+      window.addEventListener("mousemove", handlePointerMove);
+      window.addEventListener("mouseup", handlePointerUp);
+      window.addEventListener("touchmove", handlePointerMove, { passive: false });
+      window.addEventListener("touchend", handlePointerUp);
+    }
+
+    return () => {
+      window.removeEventListener("mousemove", handlePointerMove);
+      window.removeEventListener("mouseup", handlePointerUp);
+      window.removeEventListener("touchmove", handlePointerMove);
+      window.removeEventListener("touchend", handlePointerUp);
+    };
+  }, [isDragging]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -132,20 +202,40 @@ export default function SupportChat() {
 
   return (
     <aside
+      ref={containerRef}
       aria-label="AI Support Chat"
       style={{
         position: "fixed",
-        bottom: 22,
-        right: 22,
         zIndex: 9999,
         fontFamily: "var(--font-sans)",
+        userSelect: isDragging ? "none" : "auto",
+        touchAction: "none",
+        ...(position
+          ? { left: position.x, top: position.y, bottom: "auto", right: "auto" }
+          : { bottom: 22, right: 22 }),
       }}
     >
-      {/* Floating Action Bubble (Closed State) */}
+      {/* Floating Action Bubble (Closed State — Draggable) */}
       {!isOpen && (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
+        <div
+          role="button"
+          tabIndex={0}
+          onMouseDown={(e) => {
+            if (e.button !== 0) return;
+            startDrag(e.clientX, e.clientY);
+          }}
+          onTouchStart={(e) => {
+            startDrag(e.touches[0].clientX, e.touches[0].clientY);
+          }}
+          onClick={() => {
+            if (dragRef.current?.hasMoved) return;
+            setIsOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              setIsOpen(true);
+            }
+          }}
           style={{
             display: "flex",
             alignItems: "center",
@@ -154,20 +244,15 @@ export default function SupportChat() {
             borderRadius: 9999,
             background: "linear-gradient(135deg, #1E5E3A 0%, #2A8251 100%)",
             color: "#ffffff",
-            border: "2px solid rgba(255, 255, 255, 0.2)",
-            boxShadow: "0 8px 24px rgba(30, 94, 58, 0.35)",
-            cursor: "pointer",
-            transition: "all 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+            border: "2px solid rgba(255, 255, 255, 0.25)",
+            boxShadow: isDragging
+              ? "0 16px 36px rgba(30, 94, 58, 0.5)"
+              : "0 8px 24px rgba(30, 94, 58, 0.35)",
+            cursor: isDragging ? "grabbing" : "grab",
+            transition: isDragging ? "none" : "box-shadow 0.2s ease, transform 0.2s ease",
+            transform: isDragging ? "scale(1.04)" : "none",
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = "translateY(-2px) scale(1.02)";
-            e.currentTarget.style.boxShadow = "0 12px 28px rgba(30, 94, 58, 0.45)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = "none";
-            e.currentTarget.style.boxShadow = "0 8px 24px rgba(30, 94, 58, 0.35)";
-          }}
-          title="Open PassThePromo AI Assistant"
+          title="Hold and drag to move, or click to open AI Support"
         >
           <div
             style={{
@@ -196,63 +281,77 @@ export default function SupportChat() {
             />
           </div>
           <div style={{ textAlign: "left" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em", display: "flex", alignItems: "center", gap: 4 }}>
               AI Support
+              <GripHorizontal style={{ width: 13, height: 13, opacity: 0.6 }} />
             </div>
             <div style={{ fontSize: 10.5, opacity: 0.85, marginTop: -1 }}>
-              Gemini 3.6 Online
+              Gemini 3.6 • Drag to move
             </div>
           </div>
-        </button>
+        </div>
       )}
 
-      {/* Expanded Chat Window (Open State) */}
+      {/* Expanded Chat Window (Open State — Header is Draggable) */}
       {isOpen && (
         <div
           role="dialog"
           aria-label="PassThePromo Support Chat"
           style={{
             width: 380,
-            maxWidth: "calc(100vw - 32px)",
+            maxWidth: "calc(100vw - 24px)",
             height: 520,
-            maxHeight: "calc(100vh - 100px)",
+            maxHeight: "calc(100vh - 40px)",
             background: "#ffffff",
             borderRadius: "var(--radius-lg)",
             border: "1px solid var(--border)",
-            boxShadow: "0 18px 45px rgba(24, 22, 19, 0.16)",
+            boxShadow: isDragging
+              ? "0 24px 60px rgba(24, 22, 19, 0.28)"
+              : "0 18px 45px rgba(24, 22, 19, 0.16)",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
             animation: "chatPop 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
-          {/* Header */}
+          {/* Header (Drag Handle) */}
           <div
+            onMouseDown={(e) => {
+              if ((e.target as HTMLElement).closest("button")) return;
+              startDrag(e.clientX, e.clientY);
+            }}
+            onTouchStart={(e) => {
+              if ((e.target as HTMLElement).closest("button")) return;
+              startDrag(e.touches[0].clientX, e.touches[0].clientY);
+            }}
             style={{
               background: "linear-gradient(135deg, #1E5E3A 0%, #2A8251 100%)",
               color: "#ffffff",
-              padding: "14px 16px",
+              padding: "12px 16px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
+              cursor: isDragging ? "grabbing" : "grab",
+              userSelect: "none",
             }}
+            title="Hold and drag header to move chat anywhere on screen"
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 10,
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
                   background: "rgba(255, 255, 255, 0.2)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Bot style={{ width: 18, height: 18, color: "#FDE68A" }} />
+                <Bot style={{ width: 17, height: 17, color: "#FDE68A" }} />
               </div>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
                   PromoBot AI
                   <span
                     style={{
@@ -263,9 +362,10 @@ export default function SupportChat() {
                       background: "#4ade80",
                     }}
                   />
+                  <GripHorizontal style={{ width: 14, height: 14, opacity: 0.6 }} />
                 </div>
-                <div style={{ fontSize: 11, opacity: 0.85 }}>
-                  Customer Support • Gemini 3.6 Flash
+                <div style={{ fontSize: 10.5, opacity: 0.85 }}>
+                  Customer Support • Drag header to move
                 </div>
               </div>
             </div>
@@ -426,7 +526,7 @@ export default function SupportChat() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Prompt Chips (Shown if only 1-2 messages) */}
+          {/* Quick Prompt Chips */}
           {messages.length <= 2 && (
             <div
               style={{
