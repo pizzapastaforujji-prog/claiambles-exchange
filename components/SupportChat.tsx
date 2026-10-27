@@ -7,10 +7,8 @@ import {
   Send,
   Sparkles,
   Minus,
-  Bot,
   HelpCircle,
   RotateCcw,
-  GripHorizontal,
 } from "lucide-react";
 
 interface ChatMessage {
@@ -36,7 +34,7 @@ export default function SupportChat() {
       id: "welcome",
       role: "model",
       content:
-        "Hi! 👋 I'm **PromoBot**, your PassThePromo assistant powered by **Gemini 3.6 Flash**. Ask me anything about uploading, redeeming, escrow points, or site rules!",
+        "Hi! 👋 I'm **PromoBot**, your PassThePromo assistant. Ask me anything about uploading, redeeming, escrow points, or site rules!",
     },
   ]);
 
@@ -215,7 +213,7 @@ export default function SupportChat() {
           : { bottom: 22, right: 22 }),
       }}
     >
-      {/* Floating Action Bubble (Closed State — Draggable) */}
+      {/* Floating Action Bubble (Chic & Minimalist) */}
       {!isOpen && (
         <div
           role="button"
@@ -227,8 +225,38 @@ export default function SupportChat() {
           onTouchStart={(e) => {
             startDrag(e.touches[0].clientX, e.touches[0].clientY);
           }}
-          onClick={() => {
+          onClick={(e) => {
             if (dragRef.current?.hasMoved) return;
+            // Smart position-aware opening
+            const bubble = (e.currentTarget as HTMLElement).closest("div[role='button']") as HTMLElement | null
+              ?? (e.currentTarget as HTMLElement);
+            const rect = bubble.getBoundingClientRect();
+            const CHAT_W = 380;
+            const CHAT_H = 520;
+            const PAD = 12;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+
+            // Horizontal: prefer anchoring right edge of chat to right edge of bubble
+            // If that would overflow left, anchor left edge to left of bubble
+            let cx = rect.right - CHAT_W;
+            if (cx < PAD) cx = rect.left;
+            if (cx + CHAT_W > vw - PAD) cx = vw - CHAT_W - PAD;
+            cx = Math.max(PAD, cx);
+
+            // Vertical: prefer opening above bubble; fall back to below
+            let cy = rect.top - CHAT_H - PAD;
+            if (cy < PAD) {
+              // Not enough room above — try below
+              cy = rect.bottom + PAD;
+            }
+            if (cy + CHAT_H > vh - PAD) {
+              // Still overflows — clamp to bottom
+              cy = vh - CHAT_H - PAD;
+            }
+            cy = Math.max(PAD, cy);
+
+            setPosition({ x: cx, y: cy });
             setIsOpen(true);
           }}
           onKeyDown={(e) => {
@@ -239,60 +267,54 @@ export default function SupportChat() {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 10,
-            padding: "10px 16px 10px 12px",
+            gap: 8,
+            padding: "9px 15px 9px 12px",
             borderRadius: 9999,
             background: "linear-gradient(135deg, #1E5E3A 0%, #2A8251 100%)",
             color: "#ffffff",
-            border: "2px solid rgba(255, 255, 255, 0.25)",
+            border: "1px solid rgba(255, 255, 255, 0.25)",
             boxShadow: isDragging
-              ? "0 16px 36px rgba(30, 94, 58, 0.5)"
-              : "0 8px 24px rgba(30, 94, 58, 0.35)",
+              ? "0 14px 32px rgba(30, 94, 58, 0.45)"
+              : "0 6px 20px rgba(30, 94, 58, 0.3)",
             cursor: isDragging ? "grabbing" : "grab",
             transition: isDragging ? "none" : "box-shadow 0.2s ease, transform 0.2s ease",
-            transform: isDragging ? "scale(1.04)" : "none",
+            transform: isDragging ? "scale(1.03)" : "none",
           }}
-          title="Hold and drag to move, or click to open AI Support"
+          title="PromoBot Assistant"
         >
           <div
             style={{
               position: "relative",
-              width: 32,
-              height: 32,
+              width: 26,
+              height: 26,
               borderRadius: "50%",
-              background: "rgba(255, 255, 255, 0.2)",
+              background: "rgba(255, 255, 255, 0.18)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Sparkles style={{ width: 17, height: 17, color: "#FDE68A" }} />
+            <Sparkles style={{ width: 14, height: 14, color: "#FDE68A" }} />
             <span
               style={{
                 position: "absolute",
-                top: 0,
-                right: 0,
-                width: 9,
-                height: 9,
+                top: -1,
+                right: -1,
+                width: 7,
+                height: 7,
                 borderRadius: "50%",
-                background: "#22c55e",
-                border: "2px solid #1E5E3A",
+                background: "#4ade80",
+                border: "1.5px solid #1E5E3A",
               }}
             />
           </div>
-          <div style={{ textAlign: "left" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em", display: "flex", alignItems: "center", gap: 4 }}>
-              AI Support
-              <GripHorizontal style={{ width: 13, height: 13, opacity: 0.6 }} />
-            </div>
-            <div style={{ fontSize: 10.5, opacity: 0.85, marginTop: -1 }}>
-              Gemini 3.6 • Drag to move
-            </div>
-          </div>
+          <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em" }}>
+            PromoBot
+          </span>
         </div>
       )}
 
-      {/* Expanded Chat Window (Open State — Header is Draggable) */}
+      {/* Expanded Chat Window (Chic & Minimalist) */}
       {isOpen && (
         <div
           role="dialog"
@@ -314,7 +336,7 @@ export default function SupportChat() {
             animation: "chatPop 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
-          {/* Header (Drag Handle) */}
+          {/* Header (Clean Drag Handle) */}
           <div
             onMouseDown={(e) => {
               if ((e.target as HTMLElement).closest("button")) return;
@@ -327,50 +349,49 @@ export default function SupportChat() {
             style={{
               background: "linear-gradient(135deg, #1E5E3A 0%, #2A8251 100%)",
               color: "#ffffff",
-              padding: "12px 16px",
+              padding: "13px 16px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
               cursor: isDragging ? "grabbing" : "grab",
               userSelect: "none",
             }}
-            title="Hold and drag header to move chat anywhere on screen"
+            title="PromoBot Assistant"
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div
                 style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 8,
-                  background: "rgba(255, 255, 255, 0.2)",
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  background: "rgba(255, 255, 255, 0.18)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Bot style={{ width: 17, height: 17, color: "#FDE68A" }} />
+                <Sparkles style={{ width: 16, height: 16, color: "#FDE68A" }} />
               </div>
               <div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
-                  PromoBot AI
+                <div style={{ fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, letterSpacing: "-0.01em" }}>
+                  PromoBot
                   <span
                     style={{
                       display: "inline-block",
-                      width: 7,
-                      height: 7,
+                      width: 6,
+                      height: 6,
                       borderRadius: "50%",
                       background: "#4ade80",
                     }}
                   />
-                  <GripHorizontal style={{ width: 14, height: 14, opacity: 0.6 }} />
                 </div>
-                <div style={{ fontSize: 10.5, opacity: 0.85 }}>
-                  Customer Support • Drag header to move
+                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 1 }}>
+                  PassThePromo Assistant
                 </div>
               </div>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <button
                 type="button"
                 onClick={clearChat}
@@ -378,10 +399,11 @@ export default function SupportChat() {
                   background: "none",
                   border: "none",
                   color: "#ffffff",
-                  opacity: 0.8,
+                  opacity: 0.75,
                   cursor: "pointer",
                   padding: 4,
                   display: "flex",
+                  borderRadius: 4,
                 }}
                 title="Restart conversation"
               >
@@ -394,14 +416,15 @@ export default function SupportChat() {
                   background: "none",
                   border: "none",
                   color: "#ffffff",
-                  opacity: 0.8,
+                  opacity: 0.75,
                   cursor: "pointer",
                   padding: 4,
                   display: "flex",
+                  borderRadius: 4,
                 }}
-                title="Minimize chat"
+                title="Minimize"
               >
-                <Minus style={{ width: 16, height: 16 }} />
+                <Minus style={{ width: 15, height: 15 }} />
               </button>
               <button
                 type="button"
@@ -410,14 +433,15 @@ export default function SupportChat() {
                   background: "none",
                   border: "none",
                   color: "#ffffff",
-                  opacity: 0.8,
+                  opacity: 0.75,
                   cursor: "pointer",
                   padding: 4,
                   display: "flex",
+                  borderRadius: 4,
                 }}
-                title="Close chat"
+                title="Close"
               >
-                <X style={{ width: 16, height: 16 }} />
+                <X style={{ width: 15, height: 15 }} />
               </button>
             </div>
           </div>
