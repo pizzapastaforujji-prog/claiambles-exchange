@@ -77,6 +77,11 @@ export function formatDiscount(c: Partial<Claimable>): string {
   return formatMoney(c.value || 0, c.currency || "USD");
 }
 
+export function normalizeCode(raw: string | undefined | null): string {
+  if (!raw) return "";
+  return raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
 export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((email || "").trim());
 }
@@ -174,16 +179,25 @@ export function hardValidate(
     return { fail: true, reason: "This expiration date has already passed. Expired coupons cannot be uploaded." };
   }
 
+  // 2. Duplicate Detection
+  const candidateNormCode = normalizeCode(candidate.code);
+  if (candidateNormCode && candidateNormCode.length >= 3) {
+    const dup = allClaimables.find((c) => {
+      const existingCode = normalizeCode(c.code);
+      const existingAiCode = normalizeCode(c.ai_detected_code);
+      return existingCode === candidateNormCode || existingAiCode === candidateNormCode;
+    });
+    if (dup) {
+      return {
+        fail: true,
+        reason: "This exact coupon/voucher code has already been uploaded to the exchange.",
+      };
+    }
+  }
+
   if (candidate.type === "code") {
     if (!candidate.code || candidate.code.trim().length < 3) {
       return { fail: true, reason: "Code doesn't match a plausible format (at least 3 characters)." };
-    }
-    const cleanCode = candidate.code.trim().toLowerCase();
-    const dup = allClaimables.find(
-      (c) => c.code && c.code.trim().toLowerCase() === cleanCode
-    );
-    if (dup) {
-      return { fail: true, reason: "This exact coupon/voucher code already exists on the exchange." };
     }
   } else {
     if (!candidate.imageDataUrl && !candidate.imageUrl) {
