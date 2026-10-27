@@ -3,6 +3,7 @@ import "./globals.css";
 import { ExchangeProvider } from "@/lib/ExchangeContext";
 import Navbar from "@/components/Navbar";
 import Toast from "@/components/Toast";
+import SupportChat from "@/components/SupportChat";
 
 export const metadata: Metadata = {
   title: "PassThePromo — Zero-Waste Coupon & Voucher Exchange",
@@ -75,6 +76,7 @@ export default function RootLayout({
               {children}
             </main>
             <Toast />
+            <SupportChat />
           </div>
         </ExchangeProvider>
       </body>
