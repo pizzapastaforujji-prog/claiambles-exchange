@@ -66,27 +66,46 @@ export async function runGeminiPlausibilityCheck(
     }
 
     if (candidate.type === "photo" && candidate.imageDataUrl) {
+      const userEnteredBrand = (candidate.brand || "").trim();
+      const userEnteredOffer = (candidate.offerTitle || "").trim();
+      const userEnteredExpiry = (candidate.expiry || "").trim();
+      const userEnteredVal = candidate.discountType === "percent"
+        ? `${candidate.percentOff || candidate.value}% off`
+        : candidate.discountType === "perk"
+        ? "Free perk / service"
+        : `${candidate.currency || "USD"} ${candidate.value || 0}`;
+
       const prompt = `You are the lead AI Auditor for "PassThePromo", a verified coupon, voucher, and gift card exchange.
 Today's Date: ${today}.
 
-Analyze the attached voucher/coupon image with high scrutiny.
+The user is attempting to upload a voucher image with these CLAIMED details:
+- Claimed Brand: "${userEnteredBrand || "Not provided (Auto-extract mode)"}"
+- Claimed Offer: "${userEnteredOffer || "Not provided (Auto-extract mode)"}"
+- Claimed Expiration Date: "${userEnteredExpiry || "Not provided (Auto-extract mode)"}"
+- Claimed Discount: "${userEnteredVal}"
 
-YOUR INSTRUCTIONS:
-1. LEGIBILITY & AUTHENTICITY: Does this photo show a real, legible coupon, voucher, gift card, or promotional receipt? If it's a random photo (e.g. food, pet, selfie, screenshot of unrelated text), mark "valid": false.
+AUDIT INSTRUCTIONS (STRICT & THOROUGH):
+1. AUTHENTICITY: Does this photo show a real, legible coupon, promotional voucher, gift card, discount ticket, or store receipt with a discount?
+   - If it is a photo of a person, pet, food without coupon text, screenshot of unrelated text/chat, random object, or unreadable blur:
+     You MUST set "valid": false with reason "Image does not appear to be an authentic or legible coupon or voucher."
+
 2. EXPIRATION AUDIT (CRITICAL):
-   - Search for any expiration date, "valid through", "expires", "valid until", or "use by" date printed on the image.
-   - If the date visible on the voucher is BEFORE ${today} (expired), you MUST set "valid": false with reason "Voucher photo shows an expired date ([DATE])".
-3. BRAND & OFFER EXTRACTION:
-   - Extract the exact Brand Name visible in the image.
-   - Extract the specific Offer Title (e.g. "$15 off order of $40", "20% off entire purchase", "Free beverage with sandwich").
-   - If the user provided a brand (${candidate.brand || "none provided"}) and it directly contradicts the image (e.g., image is Subway but user entered Starbucks), mark "valid": false with reason "Brand mismatch: image is for [Actual Brand], not ${candidate.brand}".
-4. DISCOUNT TYPE & VALUE:
-   - "amount": If a specific cash/dollar value discount or gift card amount is stated (e.g. $10, 500 INR, €15).
-   - "percent": If a percentage off is stated (e.g. 20% off, 50% off).
-   - "perk": If it is a complimentary service, buy-one-get-one, free trial, or free add-on with no fixed dollar or percentage amount.
-   - Extract the numeric value (for cash amount or percent number). If perk, value is 0.
-5. OCR IDENTIFIER:
-   - Extract any visible promo code, PIN, barcode number, or voucher code.
+   - Locate any "valid through", "expires", "valid until", "expiration", "exp", "use by" date printed on the image.
+   - If the date on the voucher is BEFORE ${today} (expired), set "valid": false with reason "Voucher expired on [detected date]. Expired coupons cannot be traded."
+   - If the user provided a Claimed Expiration Date ("${userEnteredExpiry}"), and the image displays a clear date that CONTRADICTS it (differs by more than 2 days), you MUST set "valid": false with reason "Expiration date mismatch: voucher photo shows [detected date], but you entered ${userEnteredExpiry}."
+
+3. BRAND & STORE CROSS-CHECK:
+   - Extract the exact company or brand name visible on the coupon.
+   - If user provided a Claimed Brand ("${userEnteredBrand}") and it directly contradicts what is printed (e.g. image is Subway but user entered Starbucks):
+     You MUST set "valid": false with reason "Brand mismatch: voucher is for [Actual Brand], not ${userEnteredBrand}."
+
+4. OFFER & DISCOUNT CROSS-CHECK:
+   - Read the offer details (e.g. "$10 off $30 purchase", "20% off all items", "Free large fries").
+   - If user claimed a discount that significantly exaggerates or contradicts the image (e.g. image shows $5 off or 10% off, but user claimed $50 or free service):
+     You MUST set "valid": false with reason "Offer mismatch: voucher photo shows [Actual Offer], not ${userEnteredOffer || userEnteredVal}."
+
+5. OCR PROMO CODE / PIN EXTRACTION:
+   - Extract any visible alphanumeric promo code, redemption PIN, barcode number, or serial code from the image.
 
 Respond ONLY with a valid raw JSON object matching this schema without markdown fences:
 {
@@ -94,7 +113,7 @@ Respond ONLY with a valid raw JSON object matching this schema without markdown 
   "reason": "Clear 1-sentence explanation of what was verified or why it was rejected",
   "detected_brand": "Brand Name read from image",
   "detected_offer": "Offer details read from image",
-  "detected_expiry": "YYYY-MM-DD or estimated future date if not explicitly printed",
+  "detected_expiry": "YYYY-MM-DD (format as YYYY-MM-DD if recognizable, or empty string)",
   "detected_discount_type": "amount" | "percent" | "perk",
   "detected_value": number,
   "detected_code": "Promo code or PIN read from image, or empty string"
@@ -112,28 +131,70 @@ Respond ONLY with a valid raw JSON object matching this schema without markdown 
       const cleaned = responseText.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(cleaned);
 
-      // Extra safety: double-check expiry against today
-      if (parsed.detected_expiry && parsed.detected_expiry < today && parsed.valid) {
+      // --- Programmatic Safety Double-Checks ---
+      const detectedExp = (parsed.detected_expiry || "").trim();
+
+      // Check 1: Is detected expiry in the past?
+      if (detectedExp && /^\d{4}-\d{2}-\d{2}$/.test(detectedExp) && detectedExp < today) {
         return {
           valid: false,
-          reason: `Voucher expired on ${parsed.detected_expiry}. Expired coupons cannot be traded.`,
+          reason: `Voucher expired on ${detectedExp}. Expired coupons cannot be traded.`,
           detectedCode: parsed.detected_code || "",
           detectedBrand: parsed.detected_brand,
           detectedOffer: parsed.detected_offer,
-          detectedExpiry: parsed.detected_expiry,
+          detectedExpiry: detectedExp,
           detectedDiscountType: parsed.detected_discount_type,
           detectedValue: Number(parsed.detected_value) || 0,
           source: "ai",
         };
       }
 
+      // Check 2: Expiration mismatch between photo and user input
+      if (
+        userEnteredExpiry &&
+        detectedExp &&
+        /^\d{4}-\d{2}-\d{2}$/.test(detectedExp) &&
+        /^\d{4}-\d{2}-\d{2}$/.test(userEnteredExpiry)
+      ) {
+        const diffMs = Math.abs(new Date(detectedExp).getTime() - new Date(userEnteredExpiry).getTime());
+        const diffDays = Math.round(diffMs / 86400000);
+        if (diffDays > 2) {
+          return {
+            valid: false,
+            reason: `Expiration date mismatch: voucher photo shows ${detectedExp}, but you entered ${userEnteredExpiry}.`,
+            detectedCode: parsed.detected_code || "",
+            detectedBrand: parsed.detected_brand,
+            detectedOffer: parsed.detected_offer,
+            detectedExpiry: detectedExp,
+            detectedDiscountType: parsed.detected_discount_type,
+            detectedValue: Number(parsed.detected_value) || 0,
+            source: "ai",
+          };
+        }
+      }
+
+      // Check 3: If AI flagged as invalid, honor rejection
+      if (!parsed.valid) {
+        return {
+          valid: false,
+          reason: String(parsed.reason || "Voucher photo failed AI authenticity and cross-check verification.").slice(0, 260),
+          detectedCode: parsed.detected_code ? String(parsed.detected_code).slice(0, 100) : "",
+          detectedBrand: parsed.detected_brand || candidate.brand || "",
+          detectedOffer: parsed.detected_offer || candidate.offerTitle || "",
+          detectedExpiry: detectedExp || candidate.expiry || "",
+          detectedDiscountType: (parsed.detected_discount_type as DiscountType) || candidate.discountType || "amount",
+          detectedValue: Number(parsed.detected_value) || Number(candidate.value) || 0,
+          source: "ai",
+        };
+      }
+
       return {
-        valid: Boolean(parsed.valid),
-        reason: String(parsed.reason || "Voucher photo verified by Gemini Vision AI.").slice(0, 260),
+        valid: true,
+        reason: String(parsed.reason || "Voucher photo successfully verified by Gemini Vision AI.").slice(0, 260),
         detectedCode: parsed.detected_code ? String(parsed.detected_code).slice(0, 100) : "",
         detectedBrand: parsed.detected_brand || candidate.brand || "",
         detectedOffer: parsed.detected_offer || candidate.offerTitle || "",
-        detectedExpiry: parsed.detected_expiry || candidate.expiry || "",
+        detectedExpiry: detectedExp || candidate.expiry || "",
         detectedDiscountType: (parsed.detected_discount_type as DiscountType) || candidate.discountType || "amount",
         detectedValue: Number(parsed.detected_value) || Number(candidate.value) || 0,
         source: "ai",
