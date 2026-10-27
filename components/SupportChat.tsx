@@ -75,7 +75,9 @@ export default function SupportChat() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: nextHistory.map((m) => ({ role: m.role, content: m.content })),
+          messages: nextHistory
+            .filter((m) => m.id !== "welcome" && m.id !== "welcome-reset")
+            .map((m) => ({ role: m.role, content: m.content })),
           userContext: currentUser
             ? {
                 email: sessionEmail,
