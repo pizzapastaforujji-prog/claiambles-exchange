@@ -330,6 +330,13 @@ textarea.input:focus {
   padding: 16px;
 }
 
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
 @keyframes chatPop {
   0% {
     opacity: 0;
