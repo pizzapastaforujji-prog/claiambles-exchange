@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useExchange } from "@/lib/ExchangeContext";
+import { useActiveUsers } from "@/hooks/useActiveUsers";
 import {
   Sparkles,
   ArrowRight,
@@ -10,11 +11,13 @@ import {
   Zap,
   Lock,
   Coins,
+  Users,
 } from "lucide-react";
 
 export default function HomePage() {
   const { state } = useExchange();
   const liveCount = state.claimables.filter((c) => c.status === "valid").length;
+  const activeUsers = useActiveUsers();
 
   return (
     <div style={{ paddingTop: 20 }}>
@@ -307,6 +310,67 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Active Users Counter */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          paddingBottom: 36,
+          paddingTop: 4,
+        }}
+      >
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "7px 16px",
+            borderRadius: 9999,
+            background: "var(--canvas)",
+            border: "1px solid var(--border)",
+            fontSize: 12.5,
+            color: "var(--ink-secondary)",
+          }}
+        >
+          {/* Pulsing green dot */}
+          <span style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: "#4ade80",
+                display: "inline-block",
+              }}
+            />
+            <span
+              style={{
+                position: "absolute",
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: "#4ade80",
+                opacity: 0.5,
+                animation: "ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite",
+              }}
+            />
+          </span>
+          <Users style={{ width: 13, height: 13, flexShrink: 0 }} />
+          <span>
+            {activeUsers === null ? (
+              <span style={{ opacity: 0.5 }}>Connecting…</span>
+            ) : (
+              <>
+                <strong style={{ color: "var(--ink)", fontWeight: 700 }}>
+                  {activeUsers}
+                </strong>{" "}
+                {activeUsers === 1 ? "person" : "people"} browsing right now
+              </>
+            )}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
